@@ -43,7 +43,40 @@ await build({
 
 console.log('✓ built dist/node.js');
 
-// Smoke check: the bundled CLI must report the real package version, not a
+// Pre-build the shared `define` so all bundles get the same version.
+const sharedDefine = { __COMPRESSO_VERSION__: JSON.stringify(pkg.version) };
+
+// dist/copilot-cli.js — Copilot session REPL (SDK left as runtime external)
+await build({
+  entryPoints: ['src/copilot-cli.ts'],
+  outfile: 'dist/copilot-cli.js',
+  bundle: true,
+  platform: 'node',
+  target: 'node18',
+  format: 'esm',
+  sourcemap: true,
+  packages: 'external',
+  define: sharedDefine,
+  banner: { js: '#!/usr/bin/env node' },
+});
+console.log('✓ built dist/copilot-cli.js');
+
+// dist/dashboard-cli.js — terminal dashboard (no SDK dep, fully inlined)
+await build({
+  entryPoints: ['src/dashboard-cli.ts'],
+  outfile: 'dist/dashboard-cli.js',
+  bundle: true,
+  platform: 'node',
+  target: 'node18',
+  format: 'esm',
+  sourcemap: true,
+  external: [],
+  define: sharedDefine,
+  banner: { js: '#!/usr/bin/env node' },
+});
+console.log('✓ built dist/dashboard-cli.js');
+
+// Smoke check: the bundled proxy CLI must report the real package version, not a
 // stale fallback. Runs the shipped artifact end-to-end and fails the build on
 // mismatch, so a broken version injection can never reach a release.
 const smoke = spawnSync(process.execPath, ['dist/node.js', '--version'], { encoding: 'utf8' });

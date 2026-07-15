@@ -424,6 +424,12 @@ async function dispatchDashboard(
       }
       return dashboard.handleCompressionToggle({ enabled: body.enabled });
     }
+    case 'copilot-stats':
+      if (method !== 'GET') return undefined;
+      return dashboard.serveCopilotStats();
+    case 'copilot-sessions':
+      if (method !== 'GET') return undefined;
+      return dashboard.serveCopilotSessions();
   }
 }
 

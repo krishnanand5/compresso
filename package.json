@@ -1,5 +1,5 @@
 {
-  "name": "compresso",
+  "name": "compresso-cli",
   "version": "0.1.0",
   "description": "Token-saving proxy for LLM coding agents: renders bulky context (system prompt, tool docs, old history) as dense PNGs to cut input tokens. Runs on Node and Cloudflare Workers.",
   "type": "module",
@@ -30,6 +30,10 @@
     "./node": {
       "types": "./dist/node.d.ts",
       "import": "./dist/node.js"
+    },
+    "./copilot": {
+      "types": "./dist/copilot.d.ts",
+      "import": "./dist/copilot.js"
     },
     "./worker": {
       "types": "./dist/worker.d.ts",
@@ -93,6 +97,7 @@
     }
   },
   "dependencies": {
+    "@github/copilot-sdk": "1.0.6",
     "gpt-tokenizer": "^3.4.0"
   },
   "repository": {

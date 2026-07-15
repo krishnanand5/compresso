@@ -52,6 +52,8 @@ import {
   type SessionsPaths,
 } from './sessions.js';
 import { aggregateEventsFile, summaryToJson } from './stats.js';
+import { newCopilotAggregate, foldCopilotAggregate, trackSession, sessionCount } from './copilot-telemetry.js';
+import type { CopilotEvent, CopilotAggregate } from './copilot-telemetry.js';
 // Server-rendered UI (htmx + Alpine, vendored). No client bundle - the
 // fragments module renders finished HTML from the same payloads the JSON
 // endpoints serve.
@@ -1492,6 +1494,66 @@ export class DashboardState {
     else next.delete(model);
     setAllowedModelBases([...next]);
   }
+
+  /** GET /api/copilot-stats.json */
+  async serveCopilotStats(): Promise<Response> {
+    const copilotFile = this.paths?.eventsFile
+      ? this.paths.eventsFile.replace('events.jsonl', 'copilot-events.jsonl')
+      : undefined;
+    if (!copilotFile || !fs.existsSync(copilotFile)) {
+      return jsonResponse({ error: 'no copilot events file yet', file: copilotFile }, 404);
+    }
+    const agg = await readCopilotEventsFile(copilotFile);
+    if (!agg) {
+      return jsonResponse({ error: 'could not parse copilot events' }, 500);
+    }
+    return jsonResponse({
+      ...agg,
+      totalSessions: sessionCount(),
+      recentEvents: agg.recentEvents.slice(0, 20),
+    });
+  }
+
+  /** GET /api/copilot-sessions.json */
+  async serveCopilotSessions(): Promise<Response> {
+    const copilotFile = this.paths?.eventsFile
+      ? this.paths.eventsFile.replace('events.jsonl', 'copilot-events.jsonl')
+      : undefined;
+    if (!copilotFile || !fs.existsSync(copilotFile)) {
+      return jsonResponse({ sessions: [], count: 0 });
+    }
+    const sessions = new Map<string, { events: number; firstSeen: string; lastSeen: string; origTokens: number; imageTokens: number }>();
+    const stream = fs.createReadStream(copilotFile, { encoding: 'utf8' });
+    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+    for await (const line of rl) {
+      if (!line.trim()) continue;
+      try {
+        const ev = JSON.parse(line) as CopilotEvent;
+        const s = sessions.get(ev.session_id) ?? {
+          events: 0,
+          firstSeen: ev.ts,
+          lastSeen: ev.ts,
+          origTokens: 0,
+          imageTokens: 0,
+        };
+        s.events++;
+        s.lastSeen = ev.ts;
+        s.origTokens += ev.orig_tokens;
+        s.imageTokens += ev.image_tokens;
+        sessions.set(ev.session_id, s);
+      } catch { /* skip bad lines */ }
+    }
+    const rows = [...sessions.entries()].map(([id, s]) => ({
+      sessionId: id,
+      events: s.events,
+      firstSeen: s.firstSeen,
+      lastSeen: s.lastSeen,
+      origTokens: s.origTokens,
+      imageTokens: s.imageTokens,
+      savingsPct: s.origTokens > 0 ? Math.round((1 - s.imageTokens / s.origTokens) * 100) : 0,
+    }));
+    return jsonResponse({ sessions: rows, count: rows.length });
+  }
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -1501,6 +1563,22 @@ function jsonResponse(body: unknown, status = 200): Response {
       'content-type': 'application/json',
     },
   });
+}
+
+async function readCopilotEventsFile(file: string): Promise<CopilotAggregate | undefined> {
+  if (!fs.existsSync(file)) return undefined;
+  const stream = fs.createReadStream(file, { encoding: 'utf8' });
+  const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+  const agg = newCopilotAggregate();
+  for await (const line of rl) {
+    if (!line.trim()) continue;
+    try {
+      const ev = JSON.parse(line) as CopilotEvent;
+      foldCopilotAggregate(agg, ev);
+      trackSession(ev.session_id);
+    } catch { /* skip bad lines */ }
+  }
+  return agg;
 }
 
 function notConfigured(what: string): Response {
@@ -1532,7 +1610,9 @@ export type DashboardRoute =
   | { kind: 'current-session' } // /api/current-session.json
   | { kind: 'api-compression' } // /api/compression (POST {enabled}) — runtime kill switch
   | { kind: 'api-image-source' } // /api/image-source[?id=N] — source text behind a rendered PNG
-  | { kind: 'fragment'; name: string }; // /fragments/<name> — server-rendered htmx panels
+  | { kind: 'fragment'; name: string } // /fragments/<name> — server-rendered htmx panels
+  | { kind: 'copilot-stats' } // /api/copilot-stats.json
+  | { kind: 'copilot-sessions' }; // /api/copilot-sessions.json
 
 /** Match dashboard paths (handle query strings on /proxy-latest-png). */
 export function dashboardPath(pathname: string): DashboardRoute | null {
@@ -1545,6 +1625,8 @@ export function dashboardPath(pathname: string): DashboardRoute | null {
   if (pathname === '/api/current-session.json') return { kind: 'current-session' };
   if (pathname === '/api/compression') return { kind: 'api-compression' };
   if (pathname === '/api/image-source') return { kind: 'api-image-source' };
+  if (pathname === '/api/copilot-stats.json') return { kind: 'copilot-stats' };
+  if (pathname === '/api/copilot-sessions.json') return { kind: 'copilot-sessions' };
   if (pathname.startsWith('/fragments/')) {
     return { kind: 'fragment', name: pathname.slice('/fragments/'.length) };
   }
