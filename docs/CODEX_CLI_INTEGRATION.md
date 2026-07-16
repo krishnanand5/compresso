@@ -31,8 +31,8 @@ Your friend who built it can give you the tarball, or you can download it
 from wherever they shared it.
 
 ```bash
-# Install from the .tgz file
-npm install -g ./compresso-cli-v0.1.0.tgz
+# Install from the .tgz file (use the actual filename from builds/)
+npm install -g ./builds/compresso-cli-v0.1.0-2026-07-15-210837.tgz
 
 # Verify
 compresso --version
@@ -43,8 +43,8 @@ compresso codex --help
 `gpt-tokenizer`, etc.) from the public registry automatically — no
 extra steps needed.
 
-> **Tip:** If you're the one distributing it, run `pnpm run build && pnpm pack`
-> in the project root to produce `compresso-cli-v0.1.0.tgz`.
+> **Tip:** If you're the one distributing it, run `bash scripts/bundle.sh`
+> in the project root to produce a dated `.tgz` in `builds/`.
 
 Confirm `codex` is on your PATH:
 
@@ -128,9 +128,10 @@ compresso codex -k sk-...
 
 ## Model scope
 
-Compression is enabled by default for `claude-fable-5` and the **GPT 5.6
-family** (`gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`). All other models
-pass through uncompressed.
+Compression is enabled by default for `claude-fable-5`, the **GPT 5.6
+family** (`gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`),
+`deepseek-v4-flash`, and `nemotron-3-ultra` (and its variants like
+`nemotron-3-ultra-550b-a55b`). All other models pass through uncompressed.
 
 To enable compression for additional models, set `COMPRESSO_MODELS`:
 
