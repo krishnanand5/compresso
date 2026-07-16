@@ -18,7 +18,12 @@ export interface PxpipeApplicabilityInput {
 const VARIANT_TAG = /\[[^\]]*\]/g;
 
 function baseModelId(model: string): string {
-  return model.replace(VARIANT_TAG, '');
+  // Strip provider/ prefix (e.g. "openai/gpt-5.6-sol" → "gpt-5.6-sol") so
+  // clients that send prefixed model names (OpenCode / AI SDK) match the
+  // allowlist correctly.
+  const slashIdx = model.indexOf('/');
+  const stripped = slashIdx >= 0 ? model.slice(slashIdx + 1) : model;
+  return stripped.replace(VARIANT_TAG, '');
 }
 
 /** Dashboard runtime override; null = fall back to COMPRESSO_MODELS env / built-in default. In-memory only. */
@@ -34,7 +39,13 @@ let runtimeModelBases: readonly string[] | null = null;
  *  - Grok 4.5 — 82/100 arithmetic, 83/98 gist, and 13/18 state tracking.
  *  Both profiles remain available for explicit opt-in.
  *  Silently imaging weak or unvalidated readers is the wrong default. */
-const DEFAULT_MODEL_BASES = ['claude-fable-5', 'gpt-5.6'];
+const DEFAULT_MODEL_BASES = [
+  'claude-5',
+  'claude-fable-5',
+  'gpt-5.6',
+  'deepseek-v4-flash',
+  'nemotron-3-ultra',
+];
 
 function falsey(v: string): boolean {
   return /^(0|false|no|off|none)$/i.test(v.trim());
