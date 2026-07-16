@@ -71,7 +71,7 @@ or the upstream must accept the forwarded key).
 
 function proxyIsAlive(port: number): Promise<boolean> {
   return new Promise((resolve) => {
-    const req = http.get(`http://127.0.0.1:${port}/api/stats.json`, (res) => {
+    const req = http.get(`http://127.0.0.1:${port}/`, (res) => {
       resolve(res.statusCode === 200);
       res.resume();
     });
