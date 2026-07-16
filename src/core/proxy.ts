@@ -149,6 +149,12 @@ function processSseEvent(
       : event === 'response.incomplete' ? 'incomplete' : 'stop';
   }
   measureOpenAIChoices(obj, m);
+  // Responses API streaming: text/refusal/function-call deltas at top level (not choices[]).
+  if (event === 'response.output_text.delta' || event === 'response.refusal.delta') {
+    if (typeof obj.delta === 'string') m.textChars += obj.delta.length;
+  } else if (event === 'response.function_call_arguments.delta') {
+    if (typeof obj.delta === 'string') m.toolUseChars += obj.delta.length;
+  }
   // OpenAI chat chunks: the final chunk carries choices[].finish_reason (earlier chunks ship null).
   const choices = obj.choices;
   if (Array.isArray(choices)) {

@@ -22,6 +22,7 @@ codex ──► compresso proxy (127.0.0.1:47821) ──► api.openai.com
 - OpenAI API key (`OPENAI_API_KEY`)
 - Codex CLI installed globally: `npm install -g @openai/codex`
 - compresseo-cli installed (see [installation](#installation))
+- A model that supports compressed contexts (see [model scope](#model-scope))
 
 ## Installation
 
@@ -92,7 +93,7 @@ env_key = "CODEX_PROXY_KEY"
 wire_api = "responses"
 
 [profiles.default]
-model = "gpt-4o"
+model = "gpt-4o"              # change to "gpt-5.6-sol" for GPT 5.6
 model_provider = "compresso"
 ```
 
@@ -124,6 +125,28 @@ Or override the API key per-run:
 ```bash
 compresso codex -k sk-...
 ```
+
+## Model scope
+
+Compression is enabled by default for `claude-fable-5` and the **GPT 5.6
+family** (`gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`). All other models
+pass through uncompressed.
+
+To enable compression for additional models, set `COMPRESSO_MODELS`:
+
+```bash
+# Enable a specific model
+COMPRESSO_MODELS=gpt-5.6-sol compresso codex -m gpt-5.6-sol
+
+# Enable multiple models
+COMPRESSO_MODELS=claude-fable-5,gpt-5.6-sol,gpt-5.6-terra compresso codex
+
+# Disable compression entirely
+COMPRESSO_MODELS=off compresso codex
+```
+
+You can also toggle models at runtime via the dashboard at
+`http://127.0.0.1:47821/`.
 
 ## Token savings
 
@@ -171,7 +194,7 @@ matching the OpenAI Responses API format that compresso's
 | `No API key found` | `OPENAI_API_KEY` not set; pass `--api-key` or set the env var |
 | `Codex CLI not found` | `@openai/codex` not installed globally; run `npm install -g @openai/codex` |
 | `proxy did not start within 15000ms` | Port conflict or build issue; check `dist/node.js` exists, try a different `--port` |
-| Codex works but no compression | The proxy is not intercepting; verify `OPENAI_BASE_URL` is set to the proxy port |
+| Codex works but no compression (GPT 5.6) | GPT 5.6 is enabled by default; check `COMPRESSO_MODELS` is not set to something that overrides it | | Codex works but no compression (other models) | The model is not in the compression scope; set `COMPRESSO_MODELS` or toggle via dashboard | | No compression for any model | The proxy is not intercepting; verify `OPENAI_BASE_URL` is set to the proxy port |
 
 To see what the proxy is doing in real time, check `compresso dashboard` or
 visit `http://127.0.0.1:47821/` in a browser.
