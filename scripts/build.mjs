@@ -76,6 +76,21 @@ await build({
 });
 console.log('✓ built dist/dashboard-cli.js');
 
+// dist/codex-cli.js — Codex CLI wrapper (fully inlined, no SDK dep)
+await build({
+  entryPoints: ['src/codex-cli.ts'],
+  outfile: 'dist/codex-cli.js',
+  bundle: true,
+  platform: 'node',
+  target: 'node18',
+  format: 'esm',
+  sourcemap: true,
+  external: [],
+  define: sharedDefine,
+  banner: { js: '#!/usr/bin/env node' },
+});
+console.log('✓ built dist/codex-cli.js');
+
 // Smoke check: the bundled proxy CLI must report the real package version, not a
 // stale fallback. Runs the shipped artifact end-to-end and fails the build on
 // mismatch, so a broken version injection can never reach a release.

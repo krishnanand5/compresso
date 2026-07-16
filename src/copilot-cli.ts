@@ -1,6 +1,7 @@
 import { createSession } from './copilot.js';
 
-const VERSION: string = (globalThis as any).__COMPRESSO_VERSION__ ?? '0.0.0';
+declare const __COMPRESSO_VERSION__: string | undefined;
+const VERSION: string = __COMPRESSO_VERSION__ ?? '0.0.0';
 
 interface CopilotCliOptions {
   model?: string;

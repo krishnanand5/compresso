@@ -18,6 +18,12 @@ if (sub === 'copilot') {
     console.error('[compresso] failed to start dashboard:', err.message);
     process.exit(1);
   });
+} else if (sub === 'codex') {
+  process.argv.splice(2, 1);
+  import('../dist/codex-cli.js').catch((err) => {
+    console.error('[compresso] failed to start codex:', err.message);
+    process.exit(1);
+  });
 } else {
   // proxy, export, --help, --version — all handled by the existing bundle
   import('../dist/node.js').catch((err) => {

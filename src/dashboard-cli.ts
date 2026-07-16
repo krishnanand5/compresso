@@ -6,7 +6,8 @@ import { aggregateSessions, filterSessions, defaultPaths } from './sessions.js';
 import { newCopilotAggregate, foldCopilotAggregate } from './copilot-telemetry.js';
 import type { CopilotEvent, CopilotAggregate } from './copilot-telemetry.js';
 
-const VERSION: string = (globalThis as any).__COMPRESSO_VERSION__ ?? '0.0.0';
+declare const __COMPRESSO_VERSION__: string | undefined;
+const VERSION: string = __COMPRESSO_VERSION__ ?? '0.0.0';
 
 const COMPRESSO_HOME = process.env.COMPRESSO_HOME ?? path.join(os.homedir(), '.compresso');
 const EVENTS_FILE = process.env.COMPRESSO_LOG ?? path.join(COMPRESSO_HOME, 'events.jsonl');
