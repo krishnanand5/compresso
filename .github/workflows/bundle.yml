@@ -1,0 +1,75 @@
+name: Build and package
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag, or commit SHA to build
+        type: string
+        default: ''
+
+jobs:
+  build:
+    name: Build .tgz
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable pnpm
+        run: corepack enable && corepack prepare pnpm@10.21.0 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Pack
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          pnpm pack --pack-destination "$PWD"
+          mv "compresso-cli-${VERSION}.tgz" "compresso-cli-v${VERSION}.tgz"
+          echo "artifact=compresso-cli-v${VERSION}.tgz" >> "$GITHUB_OUTPUT"
+        id: pack
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.pack.outputs.artifact }}
+          path: ${{ steps.pack.outputs.artifact }}
+          compression-level: 0
+
+      - name: Summary
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+          ## compresso-cli package
+
+          **Artifact:** \`${{ steps.pack.outputs.artifact }}\`
+
+          ### Platform compatibility
+
+          | Platform | Status | Notes |
+          |---|---|---|
+          | macOS arm64 | ✅ Full support | Node ≥ 18, `gh` auth for Copilot, `OPENAI_API_KEY` for Codex/proxy |
+          | macOS x64 | ✅ Full support | Same as arm64 |
+          | Windows (WSL2) | ✅ Full support | Use WSL2 Ubuntu/Debian, install Node + pnpm, same as Linux |
+          | Windows (PowerShell) | ⚠️ Partial | Proxy + Codex CLI work; Copilot may need `npm install --vs2015` for native deps |
+
+          ### Install
+
+          ```bash
+          npm install -g ./${{ steps.pack.outputs.artifact }}
+          ```
+
+          Runtime dependencies resolve from the npm registry automatically.
+          EOF
