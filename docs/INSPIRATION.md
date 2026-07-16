@@ -31,7 +31,7 @@ window** read through pxpipe images — ~18M chars at the measured Anthropic
 density (**4.6×** the text ceiling). Density is measured from a live render at
 generation time, not hand-typed: regenerate with
 `npx tsx scripts/gen-context-chart.ts`
-([source](scripts/gen-context-chart.ts)).*
+([source](../scripts/gen-context-chart.ts)).*
 
 ## Demo
 
@@ -109,14 +109,14 @@ are imaged.
   math. **Sol quality:** production 5×8 scored 98/100 arithmetic and 79/93
   completed gist, 18/18 state, 4/15 completed never-stated confabulations,
   and 0/15 dense hex. Exact IDs therefore use the verbatim factsheet, and recent/open tool state stays native.
-  [Sol receipts](eval/sol-profile/QUALITY_RESULTS.md) and
+  [Sol receipts](../eval/sol-profile/QUALITY_RESULTS.md) and
   [profile evidence](MODEL_RENDER_PROFILES.md).
 - **Grok 4.5 (opt-in):** same production recipe as Sol (5×8 Spleen, IDS, text
   factsheet; Grok strip maxH 512). Off by default (not Fable-level pure-image).
   Measured production results are 82/100 arithmetic, 83/98 gist, and 13/18
   state tracking. Enable with
   `PXPIPE_MODELS=claude-fable-5,grok-4.5` or the dashboard chip.
-  [eval/grok-density/QUALITY_RESULTS.md](eval/grok-density/QUALITY_RESULTS.md).
+  [eval/grok-density/QUALITY_RESULTS.md](../eval/grok-density/QUALITY_RESULTS.md).
 
 ## Benchmarks (reproducible)
 
@@ -152,10 +152,10 @@ used for these novel-arithmetic rows.
 
 **Harness split:** Fable/Opus quality and SWE-bench rows use **Claude**; Sol and Grok quality use
 **Codex’s Responses provider** (`OPENAI_BASE_URL`, typically ocproxy) — see
-[`eval/grok-density/QUALITY_SUITE.md`](eval/grok-density/QUALITY_SUITE.md).
+[`eval/grok-density/QUALITY_SUITE.md`](../eval/grok-density/QUALITY_SUITE.md).
 
-Sol receipts: [`eval/sol-profile/QUALITY_RESULTS.md`](eval/sol-profile/QUALITY_RESULTS.md).
-Grok receipts: [`eval/grok-density/QUALITY_RESULTS.md`](eval/grok-density/QUALITY_RESULTS.md).
+Sol receipts: [`eval/sol-profile/QUALITY_RESULTS.md`](../eval/sol-profile/QUALITY_RESULTS.md).
+Grok receipts: [`eval/grok-density/QUALITY_RESULTS.md`](../eval/grok-density/QUALITY_RESULTS.md).
 SWE-bench is not copied to Sol: its runner is Claude Code/Fable-specific
 (`ANTHROPIC_BASE_URL`, Claude CLI, official Docker grading), and no Sol ON/OFF
 run exists yet. Pure-image-only is **not** Fable-grade on live Grok.
@@ -174,12 +174,12 @@ Regenerate: `npx tsx scripts/gen-context-chart.ts` · chart PNG
 [`assets/context-window-chars.png`](assets/context-window-chars.png).
 
 SWE-bench run totals, receipts, and caveats:
-[`eval/swe-bench/`](eval/swe-bench/) ·
-[`eval/swe-bench-pro/`](eval/swe-bench-pro/) ·
-[`eval/needle-haystack/`](eval/needle-haystack/) ·
-[`eval/gist-recall/`](eval/gist-recall/) ·
-[`eval/grok-density/`](eval/grok-density/) · analysis in
-[`FINDINGS.md`](FINDINGS.md). (GSM8K scored 96% imaged, but it's in training
+[`eval/swe-bench/`](../eval/swe-bench/) ·
+[`eval/swe-bench-pro/`](../eval/swe-bench-pro/) ·
+[`eval/needle-haystack/`](../eval/needle-haystack/) ·
+[`eval/gist-recall/`](../eval/gist-recall/) ·
+[`eval/grok-density/`](../eval/grok-density/) · analysis in
+[`FINDINGS.md`](../FINDINGS.md). (GSM8K scored 96% imaged, but it's in training
 data — memorized answers survive misreads — so we lead with the novel-number
 evals.)
 
@@ -310,7 +310,7 @@ exact-string recall at profitable density. The why is in
 [NOT-OCR.md](NOT-OCR.md); the dated analysis and the three
 documented follow-up threads (glyph-style A/B with banked pages, runtime
 canary + re-fetch, surrogate-reader pre-flight) are in
-[FINDINGS.md](FINDINGS.md), 2026-07-05 entry. Watch condition: re-run the
+[FINDINGS.md](../FINDINGS.md), 2026-07-05 entry. Watch condition: re-run the
 resolution sweep per model release; readable density moved ~4x in glyph
 area from Opus 4.8 to Fable 5, and a model that reads production cells
 near 100% means savings rise for free.

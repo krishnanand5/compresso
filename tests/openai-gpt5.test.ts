@@ -23,16 +23,18 @@ afterEach(() => {
 // ── Task 1: applicability gate ──────────────────────────────────────────────
 
 describe('isPxpipeSupportedGptModel', () => {
-  it('keeps GPT 5.6 Sol and sibling models opt-in by default', () => {
+  it('includes GPT 5.6 family (alias, Sol, Terra, Luna, mini, nano) by default; other 5.x is opt-in', () => {
     expect(isPxpipeSupportedGptModel('gpt-5')).toBe(false);
     expect(isPxpipeSupportedGptModel('gpt-5.5')).toBe(false);
-    expect(isPxpipeSupportedGptModel('gpt-5.6')).toBe(false);
-    expect(isPxpipeSupportedGptModel('gpt-5.6-sol')).toBe(false);
-    expect(isPxpipeSupportedGptModel('gpt-5.6-terra')).toBe(false);
+    expect(isPxpipeSupportedGptModel('gpt-5.6')).toBe(true);
+    expect(isPxpipeSupportedGptModel('gpt-5.6-sol')).toBe(true);
+    expect(isPxpipeSupportedGptModel('gpt-5.6-terra')).toBe(true);
+    expect(isPxpipeSupportedGptModel('gpt-5.6-luna')).toBe(true);
     expect(isPxpipeSupportedGptModel('gpt-5-mini')).toBe(false);
-    expect(isPxpipeSupportedGptModel('gpt-5.6-nano')).toBe(false);
-    expect(isPxpipeSupportedGptModel('gpt-5.6-sol[1m]')).toBe(false);
-    expect(isPxpipeSupportedGptModel('gpt-5.6-sol-codex[1m]')).toBe(false);
+    expect(isPxpipeSupportedGptModel('gpt-5.6-nano')).toBe(true);
+    expect(isPxpipeSupportedGptModel('gpt-5.6-sol[1m]')).toBe(true);
+    expect(isPxpipeSupportedGptModel('gpt-5.6-sol-codex[1m]')).toBe(true);
+    expect(isPxpipeSupportedGptModel('gpt-5.6-terra-codex')).toBe(true);
   });
 
   it('enables only exact Sol ids and suffix aliases when explicitly opted in', () => {

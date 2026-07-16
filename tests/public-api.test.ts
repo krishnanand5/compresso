@@ -77,10 +77,10 @@ describe('public library API', () => {
       // empty list = compress nothing
       setAllowedModelBases([]);
       expect(isPxpipeSupportedModel('claude-fable-5')).toBe(false);
-      // null clears the override → back to the Fable-only default
+      // null clears the override → back to the Fable + GPT 5.6 default
       setAllowedModelBases(null);
       expect(isPxpipeSupportedModel('claude-fable-5')).toBe(true);
-      expect(isPxpipeSupportedGptModel('gpt-5.6-sol')).toBe(false);
+      expect(isPxpipeSupportedGptModel('gpt-5.6-sol')).toBe(true);
       expect(isPxpipeSupportedGptModel('grok-4.5')).toBe(false);
       expect(isPxpipeSupportedModel('claude-opus-4-8')).toBe(false);
     } finally {
@@ -88,14 +88,14 @@ describe('public library API', () => {
     }
   });
 
-  it('keeps GPT 5.6 Sol aliases opt-in by default', () => {
+  it('includes GPT 5.6 family in the default scope; narrows to exact Sol when env overrides', () => {
     expect(isPxpipeSupportedGptModel('gpt-5')).toBe(false);
     expect(isPxpipeSupportedGptModel('gpt-5.5')).toBe(false);
     expect(isPxpipeSupportedGptModel('gpt-5.5-codex')).toBe(false);
-    expect(isPxpipeSupportedGptModel('gpt-5.6')).toBe(false);
-    expect(isPxpipeSupportedGptModel('gpt-5.6-sol')).toBe(false);
-    expect(isPxpipeSupportedGptModel('gpt-5.6-sol-codex')).toBe(false);
-    expect(isPxpipeSupportedGptModel('gpt-5.6-terra')).toBe(false);
+    expect(isPxpipeSupportedGptModel('gpt-5.6')).toBe(true);
+    expect(isPxpipeSupportedGptModel('gpt-5.6-sol')).toBe(true);
+    expect(isPxpipeSupportedGptModel('gpt-5.6-sol-codex')).toBe(true);
+    expect(isPxpipeSupportedGptModel('gpt-5.6-terra')).toBe(true);
     expect(isPxpipeSupportedGptModel('gpt-5-mini')).toBe(false);
     expect(isPxpipeSupportedGptModel('gpt-4o')).toBe(false);
 
@@ -108,7 +108,7 @@ describe('public library API', () => {
     expect(isPxpipeSupportedGptModel('gpt-5.6-terra')).toBe(false);
   });
 
-  it('keeps Grok and Sol opt-in by default', () => {
+  it('keeps Grok opt-in by default; GPT 5.6 family is included', () => {
     // Grok remains opt-in because its arithmetic, gist, and state results are
     // below the Fable bar.
     const prev = process.env.COMPRESSO_MODELS;
@@ -118,7 +118,7 @@ describe('public library API', () => {
       expect(isPxpipeSupportedGptModel('grok-4')).toBe(false);
       expect(isPxpipeSupportedGptModel('grok-4.20')).toBe(false);
       expect(getAllowedModelBases()).not.toContain('grok-4.5');
-      expect(getAllowedModelBases()).toEqual(['claude-fable-5']);
+      expect(getAllowedModelBases()).toEqual(['claude-fable-5', 'gpt-5.6']);
 
       process.env.COMPRESSO_MODELS = 'claude-fable-5,gpt-5.6-sol,grok-4.5';
       expect(isPxpipeSupportedGptModel('grok-4.5')).toBe(true);
