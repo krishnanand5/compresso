@@ -229,6 +229,7 @@ interface OpenAIResolvedOptions {
   reflow: boolean;
   collapseHistory: boolean;
   gptHistory?: Partial<GptHistoryOptions>;
+  cache?: import('./cache.js').RenderCache;
 }
 
 const DEFAULTS: OpenAIResolvedOptions = {
@@ -253,6 +254,7 @@ function resolveOptions(opts: TransformOptions): OpenAIResolvedOptions {
     reflow: opts.reflow ?? DEFAULTS.reflow,
     collapseHistory: opts.collapseHistory ?? DEFAULTS.collapseHistory,
     gptHistory: opts.gptHistory,
+    cache: opts.cache,
   };
 }
 
@@ -864,7 +866,7 @@ export async function transformOpenAIChatCompletions(
     return { body, info };
   }
 
-  const images = await renderTextToPngs(renderedText, cols, profile.style, profile.maxHeightPx);
+  const images = await renderTextToPngs(renderedText, cols, profile.style, profile.maxHeightPx, undefined, o.cache);
   if (images.length === 0) {
     info.reason = 'render_empty';
     return { body, info };
@@ -1084,7 +1086,7 @@ export async function transformOpenAIResponses(
     return { body, info };
   }
 
-  const images = await renderTextToPngs(renderedText, cols, profile.style, profile.maxHeightPx);
+  const images = await renderTextToPngs(renderedText, cols, profile.style, profile.maxHeightPx, undefined, o.cache);
   if (images.length === 0) {
     info.reason = 'render_empty';
     return { body, info };

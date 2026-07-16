@@ -42,6 +42,7 @@ import {
   atlasGrayRank as jbMono10GrayRank,
 } from './atlas-gray-jbmono10.js';
 import { encodeGrayPng, encodeRgbPng } from './png.js';
+import type { RenderCache } from './cache.js';
 
 export type RenderFont = 'spleen-5x8' | 'jetbrains-mono-10';
 export const DEFAULT_RENDER_FONT: RenderFont = 'spleen-5x8';
@@ -989,9 +990,10 @@ export async function renderTextToPngsReflow(
   text: string,
   cols: number = DEFAULT_COLS,
   style: RenderStyle = {},
+  cache?: RenderCache,
 ): Promise<RenderedImage[]> {
   const packed = reflow(text);
-  return renderTextToPngs(packed ?? text, cols, style);
+  return renderTextToPngs(packed ?? text, cols, style, undefined, undefined, cache);
 }
 
 /** Split text into N PNGs each ≤ MAX_HEIGHT_PX tall, respecting per-image char budget. */
@@ -1002,7 +1004,14 @@ export async function renderTextToPngsWithCharLimit(
   style: RenderStyle = {},
   maxHeightPx: number = MAX_HEIGHT_PX,
   slotText?: string,
+  cache?: RenderCache,
 ): Promise<RenderedImage[]> {
+  // Cache hit: skip rendering entirely.
+  if (cache) {
+    const key = cache.cacheKey(text, cols, maxCharsPerImage, maxHeightPx, style as Record<string, unknown>);
+    const cached = await cache.get(key);
+    if (cached) return cached;
+  }
   const markerScale = Math.max(1, Math.floor(style.markerScale ?? 1));
   const cellH = renderCellHeight(style);
   const lines = wrapLines(text, cols, markerScale, style.font);
@@ -1027,6 +1036,17 @@ export async function renderTextToPngsWithCharLimit(
     slotCursor += page.length;
     images.push(await renderChunkToPng(chunk, cols, style, maxHeightPx, slotChunk));
   }
+
+  // Store in cache for future lookups.
+  if (cache) {
+    const key = cache.cacheKey(text, cols, maxCharsPerImage, maxHeightPx, style as Record<string, unknown>);
+    try {
+      await cache.set(key, images);
+    } catch {
+      // Non-fatal: next request will re-render.
+    }
+  }
+
   return images;
 }
 
@@ -1036,8 +1056,9 @@ export async function renderTextToPngs(
   style: RenderStyle = {},
   maxHeightPx: number = MAX_HEIGHT_PX,
   slotText?: string,
+  cache?: RenderCache,
 ): Promise<RenderedImage[]> {
-  return renderTextToPngsWithCharLimit(text, cols, READABLE_CHARS_PER_IMAGE, style, maxHeightPx, slotText);
+  return renderTextToPngsWithCharLimit(text, cols, READABLE_CHARS_PER_IMAGE, style, maxHeightPx, slotText, cache);
 }
 
 // --- R2 multi-column rendering --------------------------------------------

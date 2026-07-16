@@ -13,6 +13,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { createProxy, parseGatewayHeaders, resolveUpstreams, type ProxyConfig } from './core/proxy.js';
+import { FilesystemLruCache } from './core/cache.js';
 import {
   parseExportArgv,
   runExportCore,
@@ -44,6 +45,8 @@ interface RuntimeConfig {
   host: string;
   upstream: string;
   openAIUpstream: string;
+  opencodeUpstream: string;
+  apiKey?: string;
   openAIApiKey?: string;
   provider?: 'cloudflare-ai-gateway';
   gatewayBaseUrl?: string;
@@ -110,6 +113,8 @@ function parseCli(argv: string[]): RuntimeConfig {
     host: process.env.HOST?.trim() || '127.0.0.1',
     upstream: process.env.ANTHROPIC_UPSTREAM ?? sharedUpstream ?? 'https://api.anthropic.com',
     openAIUpstream: process.env.OPENAI_UPSTREAM ?? sharedUpstream ?? 'https://api.openai.com',
+    opencodeUpstream: process.env.COMPRESSO_OPENCODE_UPSTREAM ?? sharedUpstream ?? 'https://opencode.ai/zen/v1',
+    apiKey: process.env.ANTHROPIC_API_KEY,
     openAIApiKey: process.env.OPENAI_API_KEY,
     provider: parseProvider(process.env.COMPRESSO_PROVIDER),
     gatewayBaseUrl: process.env.COMPRESSO_GATEWAY_BASE_URL,
@@ -168,6 +173,8 @@ Environment:
   COMPRESSO_LOG            JSONL events path (default ~/.compresso/events.jsonl)
   COMPRESSO_DUMP_DIR       debug: write every rendered PNG here (what the model
                            sees); off unless set. Compress arm only.
+  COMPRESSO_OPENCODE_UPSTREAM OpenCode Zen upstream for free models
+                           (default https://opencode.ai/zen/v1)
 
 Use with Claude Code:
   ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude
@@ -584,6 +591,66 @@ async function maybeWriteBodySidecar(
   }
 }
 
+// ---- compresso cache -----------------------------------------------------
+
+function cacheHelp(): void {
+  console.log(`compresso cache — render-cache inspection and maintenance
+
+Usage:
+  compresso cache stats         show entry count and total byte usage
+  compresso cache clean         wipe the entire render cache
+  compresso cache prune         evict coldest entries, respecting LRU caps
+
+Environment:
+  COMPRESSO_CACHE_DIR           cache directory
+                                (default ~/.compresso/cache)
+  COMPRESSO_CACHE_MAX_FILES     max cached entries (default 1000)
+  COMPRESSO_CACHE_MAX_BYTES     max total bytes (default 500000000)
+`);
+}
+
+async function runCache(argv: string[]): Promise<void> {
+  const cmd = argv[0];
+  if (!cmd || cmd === '--help' || cmd === '-h') {
+    cacheHelp();
+    return;
+  }
+
+  const dir = process.env.COMPRESSO_CACHE_DIR
+    || path.join(os.homedir(), '.compresso', 'cache');
+  const maxFiles = Number(process.env.COMPRESSO_CACHE_MAX_FILES) || 1000;
+  const maxBytes = Number(process.env.COMPRESSO_CACHE_MAX_BYTES) || 500_000_000;
+  const cache = new FilesystemLruCache({ dir, maxFiles, maxBytes });
+
+  switch (cmd) {
+    case 'stats': {
+      const s = await cache.stats();
+      console.log(`cache entries: ${s.count}`);
+      console.log(`total bytes:   ${s.totalBytes} (${(s.totalBytes / 1024 / 1024).toFixed(1)} MB)`);
+      break;
+    }
+    case 'clean': {
+      await cache.clear();
+      console.log('cache cleared');
+      break;
+    }
+    case 'prune': {
+      const sBefore = await cache.stats();
+      // Evict coldest 25 %  of entries.
+      await cache.forceEvict(Math.max(1, Math.ceil(sBefore.count * 0.25)));
+      const sAfter = await cache.stats();
+      const evicted = sBefore.count - sAfter.count;
+      const freed = sBefore.totalBytes - sAfter.totalBytes;
+      console.log(`evicted ${evicted} entries (${(freed / 1024 / 1024).toFixed(1)} MB freed)`);
+      console.log(`${sAfter.count} entries remain (${(sAfter.totalBytes / 1024 / 1024).toFixed(1)} MB)`);
+      break;
+    }
+    default:
+      console.error(`unknown cache subcommand: ${cmd}`);
+      cacheHelp();
+  }
+}
+
 // ---- compresso export ----------------------------------------------------
 
 function printExportHelp(): void {
@@ -873,7 +940,11 @@ async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   if (argv[0] === 'export') {
     await runExport(argv.slice(1));
-    return; // server never starts
+    return;
+  }
+  if (argv[0] === 'cache') {
+    await runCache(argv.slice(1));
+    return;
   }
   // No subcommands — compresso is just the proxy. Stats / sessions / cleanup
   // tools live in the dashboard (see http://127.0.0.1:${port}/).
@@ -932,12 +1003,21 @@ async function main(): Promise<void> {
   // doesn't reset what you can see in the UI. Best-effort; ignored on error.
   await dashboard.replay(opts.eventsFile).catch(() => {});
 
+  // Render cache — deduplicates re-rendering frozen history sections and
+  // identical static slabs across requests / restarts.
+  const renderCache = new FilesystemLruCache();
+  await renderCache.init().catch((err: unknown) => {
+    console.warn(`[compresso] render cache init failed: ${(err as Error).message} — continuing without cache`);
+  });
+
   const config: ProxyConfig = {
     provider: opts.provider,
     gatewayBaseUrl: opts.gatewayBaseUrl,
     gatewayHeaders: opts.gatewayHeaders,
     upstream: opts.upstream,
     openAIUpstream: opts.openAIUpstream,
+    opencodeUpstream: opts.opencodeUpstream,
+    apiKey: opts.apiKey,
     openAIApiKey: opts.openAIApiKey,
     // Per-request transform options:
     //   1. Runtime kill switch — when the dashboard "passthrough" toggle
@@ -952,9 +1032,15 @@ async function main(): Promise<void> {
       // (The dashboard kill switch does the same thing at runtime.)
       if (forcePassthrough || !dashboard.getCompressionEnabled()) return { compress: false };
       // Active path: use DEFAULTS in transform.ts for break-even gating.
-      return {};
+      return { cache: renderCache };
     },
     onRequest: async (e) => {
+      // Client identity from the CLI wrapper that spawned us.
+      // COMPRESSO_CLIENT is set by codex-cli.ts / opencode-cli.ts; the
+      // fallback covers manual proxy start / codex-cli passthrough proxy.
+      e.client = process.env.COMPRESSO_CLIENT ?? 'unknown';
+      if (process.env.COMPRESSO_CWD) e.cwd = process.env.COMPRESSO_CWD;
+
       // Feed the dashboard BEFORE tracker.emit — toTrackEvent strips
       // info.firstImagePng, so capturing has to happen on the raw event.
       dashboard.update(e);

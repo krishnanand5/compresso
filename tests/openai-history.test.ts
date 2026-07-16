@@ -45,7 +45,7 @@ describe('chatMessagesToTurns', () => {
 
 describe('planGptCollapse — gates', () => {
   it('refuses when the collapsible prefix is shorter than minCollapsePrefix', async () => {
-    const turns = plainTurns(8); // keepTail 6 + need 10 prefix → too short
+    const turns = plainTurns(6); // keepTail 3 + need 5 prefix → 6-3=3 < 5 → too short
     const plan = await planGptCollapse(turns, 0, yes);
     expect(plan.images).toHaveLength(0);
     expect(plan.reason).toBe('prefix_too_short');

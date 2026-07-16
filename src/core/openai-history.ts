@@ -102,13 +102,15 @@ export interface GptHistoryOptions {
    *  The returned `text` (o200k baseline + cache byte-stability) stays the
    *  ORIGINAL, un-reflowed transcript. */
   reflow: boolean;
+  /** Optional render cache to avoid re-rendering frozen history sections. */
+  cache?: import('./cache.js').RenderCache;
 }
 
 export const GPT_HISTORY_DEFAULTS: GptHistoryOptions = {
-  keepTail: 6,
-  keepRecentPairs: 6,
-  minCollapsePrefix: 10,
-  minCollapseTokens: 2000,
+  keepTail: 3,
+  keepRecentPairs: 3,
+  minCollapsePrefix: 5,
+  minCollapseTokens: 1000,
   cols: GPT_HISTORY_COLS,
   collapseChunk: 10,
   freezeChunk: 10,
@@ -426,25 +428,31 @@ export async function planGptCollapse(
   }
   const maxImages = Math.max(0, Math.floor(o.maxImages));
   const rendered: Array<{ s: number; e: number; imgs: RenderedImage[] }> = [];
+  const sectionsToRender = sections
+    .map(([s, e]) => {
+      const sectionText = joinTurns(turns, s, e, -1);
+      if (!sectionText || sectionText.length === 0) return null;
+      const safeSection = neutralizeSentinel(sectionText);
+      const sectionRender = o.reflow ? reflow(safeSection) ?? safeSection : sectionText;
+      return { s, e, sectionRender };
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null);
+
+  // Render all sections in parallel, then check image cap sequentially.
+  const allResults = await Promise.all(
+    sectionsToRender.map(async ({ s, e, sectionRender }) => {
+      const imgs = await renderTextToPngs(sectionRender, o.cols, o.style ?? {}, o.maxHeightPx, undefined, o.cache);
+      return { s, e, imgs };
+    }),
+  );
+
   let imgCount = 0;
   let collapseEnd = pp;
-  for (const [s, e] of sections) {
-    const sectionText = joinTurns(turns, s, e, -1);
-    if (!sectionText || sectionText.length === 0) continue;
-    const safeSection = neutralizeSentinel(sectionText);
-    let sectionRender = o.reflow ? reflow(safeSection) ?? safeSection : sectionText;
-    // Readable portrait strips (≤768px wide) — legible to OpenAI vision, same as
-    // the static slab. renderTextToPngs caps each PNG at MAX_HEIGHT_PX so a tall
-    // section pages into N images, all still well under the 10,000-patch budget.
-    const sectionImgs = await renderTextToPngs(sectionRender, o.cols, o.style ?? {}, o.maxHeightPx);
-    if (imgCount + sectionImgs.length > maxImages) {
-      // TRUE cap: keep the sections already selected, leave this and every later
-      // section (and the pin, if not yet reached) as normal text in the remainder.
-      break;
-    }
-    rendered.push({ s, e, imgs: sectionImgs });
-    imgCount += sectionImgs.length;
-    collapseEnd = e;
+  for (const r of allResults) {
+    if (imgCount + r.imgs.length > maxImages) break;
+    rendered.push(r);
+    imgCount += r.imgs.length;
+    collapseEnd = r.e;
   }
   // The pin is "consumed" (emitted as text inside the synthetic) only once we have
   // collapsed PAST it. If the image cap stopped us before the pin, it survives as a
@@ -661,7 +669,7 @@ export async function planResponsesPairCollapse(
     const safe = neutralizeSentinel(source);
     let renderedText = o.reflow ? reflow(safe) ?? safe : safe;
     const images = await renderTextToPngs(
-      renderedText, o.cols, o.style ?? {}, o.maxHeightPx,
+      renderedText, o.cols, o.style ?? {}, o.maxHeightPx, undefined, o.cache,
     );
     return { source, renderedText, images };
   };

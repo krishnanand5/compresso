@@ -45,6 +45,8 @@ export interface TransformOptions {
   reflow?: boolean;
   keepSharp?: (block: KeepSharpBlock) => boolean;
   emitRecoverable?: boolean;
+  /** Filesystem-backed LRU cache for rendered PNGs. */
+  cache?: import('./cache.js').RenderCache;
 }
 
 export type BucketName =
