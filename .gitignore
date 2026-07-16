@@ -46,5 +46,8 @@ eval/gist-recall/work*/*.png
 # message content). Keep a local copy for eval scripts, but never commit it.
 eval/corpus/
 
+# Package tarballs for distribution (pnpm pack output)
+*.tgz
+
 # Bench artifacts (events.jsonl, PNG dumps, workspaces) — one dir per run
 bench/runs/
