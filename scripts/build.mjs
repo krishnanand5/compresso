@@ -91,6 +91,21 @@ await build({
 });
 console.log('✓ built dist/codex-cli.js');
 
+// dist/opencode-cli.js — OpenCode CLI wrapper (fully inlined, no SDK dep)
+await build({
+  entryPoints: ['src/opencode-cli.ts'],
+  outfile: 'dist/opencode-cli.js',
+  bundle: true,
+  platform: 'node',
+  target: 'node18',
+  format: 'esm',
+  sourcemap: true,
+  external: [],
+  define: sharedDefine,
+  banner: { js: '#!/usr/bin/env node' },
+});
+console.log('✓ built dist/opencode-cli.js');
+
 // Smoke check: the bundled proxy CLI must report the real package version, not a
 // stale fallback. Runs the shipped artifact end-to-end and fails the build on
 // mismatch, so a broken version injection can never reach a release.

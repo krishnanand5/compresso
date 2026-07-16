@@ -3,6 +3,8 @@
 // proxy (default) and export -> dist/node.js
 // copilot                          -> dist/copilot-cli.js
 // dashboard                        -> dist/dashboard-cli.js
+// codex                            -> dist/codex-cli.js
+// opencode                         -> dist/opencode-cli.js
 
 const sub = process.argv[2];
 
@@ -22,6 +24,12 @@ if (sub === 'copilot') {
   process.argv.splice(2, 1);
   import('../dist/codex-cli.js').catch((err) => {
     console.error('[compresso] failed to start codex:', err.message);
+    process.exit(1);
+  });
+} else if (sub === 'opencode') {
+  process.argv.splice(2, 1);
+  import('../dist/opencode-cli.js').catch((err) => {
+    console.error('[compresso] failed to start opencode:', err.message);
     process.exit(1);
   });
 } else {
