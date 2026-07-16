@@ -52,3 +52,6 @@ builds/
 
 # Bench artifacts (events.jsonl, PNG dumps, workspaces) — one dir per run
 bench/runs/
+
+# Sandbox — scratch files, experiments, temporary tests, never committed
+sandbox/
