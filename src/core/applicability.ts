@@ -45,7 +45,19 @@ const DEFAULT_MODEL_BASES = [
   'gpt-5.6',
   'deepseek-v4-flash',
   'nemotron-3-ultra',
+  'big-pickle',
 ];
+
+/** Model bases confirmed to support image (multimodal) input — compression renders
+ *  text into images, so only these models can receive compressed requests.
+ *  Models in `DEFAULT_MODEL_BASES` but NOT in this set are text-only and will
+ *  be passed through without compression. */
+const IMAGE_CAPABLE_BASES = new Set([
+  'claude-5',
+  'claude-fable-5',
+  'gpt-5.6',
+  'big-pickle',
+]);
 
 function falsey(v: string): boolean {
   return /^(0|false|no|off|none)$/i.test(v.trim());
@@ -103,6 +115,15 @@ export function isPxpipeSupportedModel(model: string | null | undefined): boolea
 /** True when compresso may transform this GPT model. Shares the single COMPRESSO_MODELS scope. */
 export function isPxpipeSupportedGptModel(model: string | null | undefined): boolean {
   return isAllowed(model);
+}
+
+/** True when the model supports image (multimodal) input — compression may render
+ *  text into images. Text-only models (e.g. deepseek-v4-flash-free) return false
+ *  even if they are in the allowed scope, so their requests pass through unchanged. */
+export function isImageCapableModel(model: string | null | undefined): boolean {
+  if (typeof model !== 'string') return false;
+  const base = baseModelId(model);
+  return [...IMAGE_CAPABLE_BASES].some((b) => base === b || base.startsWith(`${b}-`));
 }
 
 /** Canonical set of Anthropic Messages routes compresso transforms. Shared with

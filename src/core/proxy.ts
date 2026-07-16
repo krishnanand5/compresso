@@ -5,7 +5,7 @@
 
 import type { TransformOptions, TransformInfo } from './utils.js';
 import { transformOpenAIChatCompletions, transformOpenAIResponses } from './openai.js';
-import { isPxpipeSupportedGptModel } from './applicability.js';
+import { isImageCapableModel, isPxpipeSupportedGptModel } from './applicability.js';
 import type { Usage } from './types.js';
 
 export interface ProxyConfig {
@@ -27,6 +27,10 @@ export interface ProxyConfig {
   /** Pass a function to inject dynamic values per-request (e.g. live charsPerToken);
    *  static object for Workers/tests. */
   transform?: TransformOptions | (() => TransformOptions);
+  /** OpenCode AI Gateway/Vercel AI Gateway upstream for /v3/ai/* paths.
+   *  Opencode's built-in `opencode` provider sends free-model requests here;
+   *  these are forwarded to https://ai-gateway.vercel.sh. */
+  opencodeUpstream?: string;
   /** Called after every request — useful for logging / metrics in the host. */
   onRequest?: (event: ProxyEvent) => void | Promise<void>;
 }
@@ -36,6 +40,10 @@ export interface ProxyEvent {
   path: string;
   /** Top-level request model when present. Used for telemetry/dashboard labels only. */
   model?: string;
+  /** Client identifier: 'codex', 'opencode', 'copilot', 'claude', or 'unknown'. */
+  client?: string;
+  /** Working directory of the client process that initiated the request. */
+  cwd?: string;
   status: number;
   /** Wall-clock ms from request start to event fire (≈ end of upstream body). */
   durationMs: number;
@@ -469,6 +477,7 @@ function teeForUsage(res: Response): {
 
 const DEFAULT_UPSTREAM = 'https://api.anthropic.com';
 const DEFAULT_OPENAI_UPSTREAM = 'https://api.openai.com';
+const DEFAULT_OPENCODE_UPSTREAM = 'https://opencode.ai/zen/v1';
 
 /** Headers we strip on the way out — they're hop-by-hop or proxy-injected. */
 const STRIP_REQ_HEADERS = new Set([
@@ -533,6 +542,7 @@ function isCanonicalOpenAIPath(pathname: string, headers: Headers, hasOpenAIKey:
 export function resolveUpstreams(config: ProxyConfig): {
   anthropic: string;
   openai: string;
+  opencode?: string;
   stripOpenAIV1: boolean;
 } {
   if (config.provider === 'cloudflare-ai-gateway') {
@@ -542,11 +552,12 @@ export function resolveUpstreams(config: ProxyConfig): {
         "provider 'cloudflare-ai-gateway' requires gatewayBaseUrl (COMPRESSO_GATEWAY_BASE_URL)",
       );
     }
-    return { anthropic: `${base}/anthropic`, openai: `${base}/openai`, stripOpenAIV1: true };
+    return { anthropic: `${base}/anthropic`, openai: `${base}/openai`, opencode: (config.opencodeUpstream ?? DEFAULT_OPENCODE_UPSTREAM).replace(/\/+$/, ''), stripOpenAIV1: true };
   }
   return {
     anthropic: (config.upstream ?? DEFAULT_UPSTREAM).replace(/\/+$/, ''),
     openai: (config.openAIUpstream ?? DEFAULT_OPENAI_UPSTREAM).replace(/\/+$/, ''),
+    opencode: (config.opencodeUpstream ?? DEFAULT_OPENCODE_UPSTREAM).replace(/\/+$/, ''),
     stripOpenAIV1: false,
   };
 }
@@ -643,13 +654,30 @@ export function createProxy(config: ProxyConfig = {}) {
       req.headers,
       config.openAIApiKey !== undefined,
     );
-    const upstreamBase = providerPrefixed ? passthroughUpstream : isOpenAIPath ? openAIUpstream : upstream;
+    const isOpenCodeAIPath = url.pathname.startsWith('/zen/v1/');
+    const isOpenCodeChat = isOpenCodeAIPath && req.method === 'POST' && url.pathname === '/zen/v1/chat/completions';
+    const isOpenCodeResponses = isOpenCodeAIPath && req.method === 'POST' && (
+      url.pathname === '/zen/v1/responses'
+    );
+    const openCodeUpstream = routes.opencode ?? passthroughUpstream;
+    const upstreamBase = providerPrefixed
+      ? passthroughUpstream
+      : isOpenCodeAIPath
+        ? openCodeUpstream
+        : isOpenAIPath
+          ? openAIUpstream
+          : upstream;
 
     let bodyOut: BodyInit | null = null;
     let info: TransformInfo | undefined;
     let requestModel: string | undefined;
 
-    if (isOpenAIChat || isOpenAIResponses) {
+    // Some models (e.g. deepseek-v4-flash-free, nemotron-3-ultra-free) are
+    // text-only — they can't process compressed image inputs. Only compress
+    // for models confirmed image-capable; everything else passes through.
+    const isOpenCodeTransformable = isOpenCodeChat || isOpenCodeResponses;
+
+    if (isOpenAIChat || isOpenAIResponses || isOpenCodeTransformable) {
       const bodyIn = new Uint8Array(await req.arrayBuffer());
       try {
         const transformOpts =
@@ -657,10 +685,11 @@ export function createProxy(config: ProxyConfig = {}) {
         const model = readModelField(bodyIn);
         requestModel = model ?? undefined;
         const modelOk = isPxpipeSupportedGptModel(model);
-        const effectiveOpts = modelOk
+        const imageCapable = isImageCapableModel(model);
+        const effectiveOpts = modelOk && imageCapable
           ? transformOpts
           : { ...transformOpts, compress: false };
-        const r = isOpenAIChat
+        const r = (isOpenAIChat || isOpenCodeChat)
           ? await transformOpenAIChatCompletions(bodyIn, effectiveOpts)
           : await transformOpenAIResponses(bodyIn, effectiveOpts);
         if (!modelOk) r.info.reason = 'unsupported_model';
@@ -693,7 +722,12 @@ export function createProxy(config: ProxyConfig = {}) {
     // Gateway OpenAI routes drop the `/v1` prefix; provider-prefixed passthrough
     // routes keep their full path so ocproxy-style upstreams see `/openai/*`,
     // `/google-ai-studio/*`, etc. exactly as the client sent them.
-    const outPath = isOpenAIPath && routes.stripOpenAIV1 ? path.replace(/^\/v1(?=\/)/, '') : path;
+    // Opencode Zen routes drop `/zen/v1` so the api-family path reaches the upstream.
+    const outPath = isOpenAIPath && routes.stripOpenAIV1
+      ? path.replace(/^\/v1(?=\/)/, '')
+      : isOpenCodeAIPath
+        ? path.replace(/^\/zen\/v1/, '')
+        : path;
     const upstreamUrl = upstreamBase + outPath;
     let upstreamRes: Response;
     try {
