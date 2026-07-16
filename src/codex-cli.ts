@@ -18,7 +18,7 @@ interface CodexCliOptions {
 
 function parseArgv(): CodexCliOptions {
   const args = process.argv.slice(2);
-  const opts: CodexCliOptions = { port: 47821, help: false, setup: false };
+  const opts: CodexCliOptions = { port: 47823, help: false, setup: false };
 
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!;
@@ -56,7 +56,7 @@ function printHelp(): void {
 Usage:
   compresso codex                           interactive Codex CLI session
   compresso codex "write a test"            single-shot, print, exit
-  compresso codex --port 47821              reuse existing proxy on port
+  compresso codex --port 47823              reuse existing proxy on port
   compresso codex --model gpt-4o            specific model
   compresso codex -k sk-...                 OpenAI API key
   compresso codex --setup                   write ~/.codex/config.toml provider config
@@ -72,8 +72,11 @@ or the upstream must accept the forwarded key).
 function proxyIsAlive(port: number): Promise<boolean> {
   return new Promise((resolve) => {
     const req = http.get(`http://127.0.0.1:${port}/`, (res) => {
-      resolve(res.statusCode === 200);
-      res.resume();
+      let body = '';
+      res.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+      res.on('end', () => {
+        resolve(res.statusCode === 200 && body.includes('compresso'));
+      });
     });
     req.on('error', () => resolve(false));
     req.setTimeout(2000, () => { req.destroy(); resolve(false); });
@@ -114,7 +117,13 @@ async function startProxy(port: number): Promise<{ process: import('node:child_p
   }
 
   const proxy = spawn(process.execPath, [proxyEntry], {
-    env: { ...process.env, PORT: String(port), HOST: '127.0.0.1' },
+    env: {
+      ...process.env,
+      PORT: String(port),
+      HOST: '127.0.0.1',
+      COMPRESSO_CLIENT: 'codex',
+      COMPRESSO_CWD: process.cwd(),
+    },
     stdio: ['ignore', 'inherit', 'pipe'],
   });
 

@@ -685,6 +685,10 @@ export function renderSessionsFragment(p: SessionsPayload): string {
     const proj = s.claudeCode?.projectPath || s.project;
     return proj ? shortPath(proj) : s.id.slice(0, 8);
   };
+  const clientTag = (c: string | null | undefined) =>
+    c != null && c !== 'unknown'
+      ? ` <span class="badge badge-${escapeHtml(c)}">${escapeHtml(c)}</span>`
+      : '';
   const barPct = (v: number) => (max <= 0 || v <= 0 ? 0 : (v / max) * 100);
 
   const status = `<div class="status">${all.length} session${all.length === 1 ? '' : 's'} tracked</div>`;
@@ -697,7 +701,7 @@ export function renderSessionsFragment(p: SessionsPayload): string {
       const fill = pct > 0 ? `<div class="bar-fill" style="width:max(3px,${pct}%)"></div>` : '';
       return (
         `<div class="bar-row">` +
-        `<div class="bar-label" title="${escapeHtml(s.claudeCode?.projectPath || s.project || s.id)}">${escapeHtml(label(s))}</div>` +
+        `<div class="bar-label" title="${escapeHtml(s.claudeCode?.projectPath || s.project || s.id)}">${escapeHtml(label(s))}${clientTag(s.client)}</div>` +
         `<div class="bar-track">${fill}</div>` +
         `<div class="bar-val${v < 0 ? ' neg' : ''}">${numFmt(v)}</div>` +
         `</div>`
@@ -1004,6 +1008,10 @@ const CSS = `
     border-radius: 999px; padding: 0 5px; margin-left: 4px; vertical-align: 1px; cursor: help; white-space: nowrap; }
   .badge-img { background: var(--img-tint); color: var(--img-ink); }
   .badge-txt { background: var(--txt-tint); color: var(--txt-ink); }
+  .badge-codex { background: #e9f3fb; color: #1f5f8b; }
+  .badge-opencode { background: var(--good-tint); color: var(--good); }
+  :root[data-theme="dark"] .badge-codex { background: #142631; color: #5aa3d6; }
+  :root[data-theme="dark"] .badge-opencode { background: var(--good-tint); color: var(--good); }
 
   /* inspector */
   .viewer-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }

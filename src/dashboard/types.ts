@@ -91,6 +91,7 @@ export interface SessionsPayload {
 export interface SessionRow {
   // Field names MUST match the JSON from serveSessionsJson (core/sessions.ts).
   id: string;
+  client: string | null;
   project: string | null;
   firstSeen: string;
   lastSeen: string;

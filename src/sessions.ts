@@ -40,6 +40,8 @@ import {
 export interface SessionSummary {
   /** The synthetic session ID = first_user_sha8 (or '<unknown>' if missing). */
   id: string;
+  /** Client identifier of the first event in the session (codex, opencode, etc.). */
+  client: string | undefined;
   /** Working directory of the first event in the session, if any. */
   project: string | undefined;
   /** ISO timestamp of the first event we saw for this session. */
@@ -153,6 +155,7 @@ export async function aggregateSessions(
     if (!s) {
       s = {
         id,
+        client: ev.client,
         project: ev.cwd,
         firstSeen: ev.ts,
         lastSeen: ev.ts,
@@ -172,6 +175,7 @@ export async function aggregateSessions(
     // Cling to whichever cwd we saw first; sessions that hop directories are
     // rare and the first cwd is the most stable identifier.
     if (s.project === undefined && ev.cwd) s.project = ev.cwd;
+    if (s.client === undefined && ev.client) s.client = ev.client;
     // Real per-session savings, cache-aware. See src/core/baseline.ts for the
     // full derivation: compresso is credited only for token reduction, never for
     // caching. The imagined text baseline gets the SAME observed cache state as

@@ -12,6 +12,8 @@ export interface TrackEvent {
   ts: string;
   method: string;
   path: string;
+  /** Client identifier: 'codex', 'opencode', 'copilot', 'claude', or 'unknown'. */
+  client?: string;
   /** Top-level request model when present. */
   model?: string;
   status: number;
@@ -177,6 +179,8 @@ export function toTrackEvent(ev: ProxyEvent): TrackEvent {
     duration_ms: ev.durationMs,
   };
   if (ev.model) out.model = ev.model;
+  if (ev.client) out.client = ev.client;
+  if (ev.cwd) out.cwd = ev.cwd;
   if (ev.firstByteMs !== undefined) out.first_byte_ms = ev.firstByteMs;
   if (ev.error) out.error = ev.error;
   if (ev.errorBody) out.error_body = ev.errorBody;
