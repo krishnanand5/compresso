@@ -17,7 +17,7 @@ interface OpenCodeCliOptions {
 
 function parseArgv(): OpenCodeCliOptions {
   const args = process.argv.slice(2);
-  const opts: OpenCodeCliOptions = { port: 47821, help: false, setup: false };
+  const opts: OpenCodeCliOptions = { port: 47822, help: false, setup: false };
 
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!;
@@ -51,7 +51,7 @@ function printHelp(): void {
 Usage:
   compresso opencode                          interactive OpenCode session
   compresso opencode "write a test"           single-shot, print, exit
-  compresso opencode --port 47821             reuse existing proxy on port
+  compresso opencode --port 47822             reuse existing proxy on port
   compresso opencode --model gpt-5.6-sol      specific model (select in /models too)
   compresso opencode --setup                  write ~/.config/opencode/opencode.json
   compresso opencode --help                   this help
@@ -66,8 +66,11 @@ ANTHROPIC_API_KEY for Claude models, or both).
 function proxyIsAlive(port: number): Promise<boolean> {
   return new Promise((resolve) => {
     const req = http.get(`http://127.0.0.1:${port}/`, (res) => {
-      resolve(res.statusCode === 200);
-      res.resume();
+      let body = '';
+      res.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+      res.on('end', () => {
+        resolve(res.statusCode === 200 && body.includes('compresso'));
+      });
     });
     req.on('error', () => resolve(false));
     req.setTimeout(2000, () => { req.destroy(); resolve(false); });
@@ -107,7 +110,13 @@ async function startProxy(port: number): Promise<{ process: import('node:child_p
   }
 
   const proxy = spawn(process.execPath, [proxyEntry], {
-    env: { ...process.env, PORT: String(port), HOST: '127.0.0.1' },
+    env: {
+      ...process.env,
+      PORT: String(port),
+      HOST: '127.0.0.1',
+      COMPRESSO_CLIENT: 'opencode',
+      COMPRESSO_CWD: process.cwd(),
+    },
     stdio: ['ignore', 'inherit', 'pipe'],
   });
 
@@ -154,35 +163,17 @@ function findOpenCodeBinary(): string | null {
   return null;
 }
 
-// ---- Temp config & setup ---------------------------------------------------
+// ---- Config ----------------------------------------------------------------
 
-function opencodeConfigContent(port: number): string {
-  return JSON.stringify(
-    {
-      $schema: 'https://opencode.ai/config.json',
-      provider: {
-        openai: {
-          options: {
-            baseURL: `http://127.0.0.1:${port}/v1`,
-          },
-        },
-        anthropic: {
-          options: {
-            baseURL: `http://127.0.0.1:${port}`,
-          },
-        },
-      },
+function opencodeConfigJson(port: number): string {
+  return JSON.stringify({
+    $schema: 'https://opencode.ai/config.json',
+    provider: {
+      openai: { options: { baseURL: `http://127.0.0.1:${port}/v1` } },
+      anthropic: { options: { baseURL: `http://127.0.0.1:${port}` } },
+      opencode: { options: { baseURL: `http://127.0.0.1:${port}/zen/v1` } },
     },
-    null,
-    2,
-  );
-}
-
-function writeTempConfig(port: number): string {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'compresso-opencode-'));
-  const configPath = path.join(tmpDir, 'opencode.json');
-  fs.writeFileSync(configPath, opencodeConfigContent(port), 'utf8');
-  return configPath;
+  });
 }
 
 function writeGlobalConfig(port: number): void {
@@ -199,7 +190,7 @@ function writeGlobalConfig(port: number): void {
     // start fresh
   }
 
-  const proxyOverrides = JSON.parse(opencodeConfigContent(port)) as Record<string, unknown>;
+  const proxyOverrides = JSON.parse(opencodeConfigJson(port)) as Record<string, unknown>;
 
   // Merge provider section preserving existing entries
   if (proxyOverrides.provider && typeof proxyOverrides.provider === 'object') {
@@ -225,13 +216,6 @@ function writeGlobalConfig(port: number): void {
   console.log('');
   console.log(`  To use: run \`opencode\` normally (make sure the proxy is running on port ${port})`);
   console.log(`  To remove: delete the \`provider.openai.options.baseURL\` and \`provider.anthropic.options.baseURL\` entries`);
-}
-
-function cleanupTempConfig(configPath: string): void {
-  try {
-    fs.unlinkSync(configPath);
-    fs.rmdirSync(path.dirname(configPath));
-  } catch { /* best effort */ }
 }
 
 // ---- Main ------------------------------------------------------------------
@@ -260,12 +244,8 @@ async function main(): Promise<void> {
     console.log(`[compresso] using existing proxy on port ${opts.port}`);
   }
 
-  // Write temp opencode config
-  const tempConfigPath = writeTempConfig(opts.port);
-
   // Ensure cleanup on exit
   const cleanup = () => {
-    cleanupTempConfig(tempConfigPath);
     if (proxyProc && !alive) stopProxy(proxyProc);
   };
   process.on('exit', cleanup);
@@ -288,12 +268,14 @@ async function main(): Promise<void> {
     opencodeArgs.push(opts.prompt);
   }
 
-  // Spawn opencode with OPENCODE_CONFIG pointing at our temp config
+  const configJson = opencodeConfigJson(opts.port);
+
+  // Spawn opencode with inline config (highest precedence) routing through proxy
   const opencode = spawn(opencodeBin, opencodeArgs, {
     stdio: 'inherit',
     env: {
       ...process.env,
-      OPENCODE_CONFIG: tempConfigPath,
+      OPENCODE_CONFIG_CONTENT: configJson,
     },
   });
 
