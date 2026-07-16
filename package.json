@@ -41,11 +41,9 @@
     }
   },
   "files": [
-    "bin/",
+    "bin/*.js",
     "dist/",
     "!dist/**/*.map",
-    "assets/*LICENSE.txt",
-    "README.md",
     "LICENSE"
   ],
   "scripts": {
@@ -60,7 +58,8 @@
     "test:watch": "vitest",
     "test:restart": "bash tests/restart.test.sh",
     "prepublishOnly": "pnpm run typecheck && pnpm test && pnpm run build",
-    "vendor:ui": "node scripts/vendor-ui.mjs"
+    "vendor:ui": "node scripts/vendor-ui.mjs",
+    "bundle": "bash scripts/bundle.sh"
   },
   "keywords": [
     "proxy",
