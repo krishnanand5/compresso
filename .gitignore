@@ -48,6 +48,7 @@ eval/corpus/
 
 # Package tarballs for distribution (pnpm pack output)
 *.tgz
+builds/
 
 # Bench artifacts (events.jsonl, PNG dumps, workspaces) — one dir per run
 bench/runs/

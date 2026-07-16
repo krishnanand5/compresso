@@ -4,31 +4,42 @@
 # Usage:
 #   pnpm run bundle
 #   DESKTOP=1 pnpm run bundle       # also copy to ~/Desktop
+#   NO_BUILD=1 pnpm run bundle      # skip build, repack existing dist
 #
-# Output: compresso-cli-<version>.tgz in project root (and optionally Desktop).
+# Output:
+#   builds/compresso-cli-<version>-<timestamp>.tgz
 
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
 VERSION=$(node -p "require('./package.json').version")
-TARBALL="compresso-cli-v${VERSION}.tgz"
+TIMESTAMP=$(date '+%Y-%m-%d-%H%M%S')
+BUILDS_DIR="builds"
 
-echo "[bundle] building…"
-pnpm run build
+mkdir -p "$BUILDS_DIR"
 
-echo "[bundle] packing…"
-pnpm pack --pack-destination "$PWD" 2>&1 | grep -v '^$' || true
-
-# pnpm pack outputs "compresso-cli-<version>.tgz"; rename to include 'v'
-if [ -f "compresso-cli-${VERSION}.tgz" ]; then
-  mv "compresso-cli-${VERSION}.tgz" "$TARBALL"
+if [ "${NO_BUILD:-0}" != "1" ]; then
+  echo "[bundle] building…"
+  pnpm run build
+else
+  echo "[bundle] skipping build (NO_BUILD=1)"
 fi
 
-SIZE=$(du -h "$TARBALL" | cut -f1)
-echo "[bundle] created $TARBALL ($SIZE)"
+echo "[bundle] packing…"
+pnpm pack --pack-destination "$BUILDS_DIR" 2>&1 | grep -v '^$' || true
+
+# pnpm pack outputs "compresso-cli-<version>.tgz"; rename with timestamp
+RAW="compresso-cli-${VERSION}.tgz"
+NAMED="compresso-cli-v${VERSION}-${TIMESTAMP}.tgz"
+if [ -f "$BUILDS_DIR/$RAW" ]; then
+  mv "$BUILDS_DIR/$RAW" "$BUILDS_DIR/$NAMED"
+fi
+
+SIZE=$(du -h "$BUILDS_DIR/$NAMED" | cut -f1)
+echo "[bundle] created $BUILDS_DIR/$NAMED ($SIZE)"
 
 if [ "${DESKTOP:-0}" = "1" ]; then
-  cp "$TARBALL" "$HOME/Desktop/$TARBALL"
-  echo "[bundle] also copied to ~/Desktop/$TARBALL"
+  cp "$BUILDS_DIR/$NAMED" "$HOME/Desktop/$NAMED"
+  echo "[bundle] also copied to ~/Desktop/$NAMED"
 fi
