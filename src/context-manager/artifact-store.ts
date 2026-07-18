@@ -14,9 +14,9 @@ export class ArtifactStore {
   private db: Database.Database;
   private dbDir: string;
 
-  constructor(dbDir: string) {
+  constructor(dbDir: string, db?: Database.Database) {
     this.dbDir = dbDir;
-    this.db = initializeDatabase(dbDir);
+    this.db = db ?? initializeDatabase(dbDir);
   }
 
   createArtifact(input: ArtifactInput): Artifact {

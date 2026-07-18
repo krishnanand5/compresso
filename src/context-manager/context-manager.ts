@@ -28,7 +28,7 @@ export class ContextManager {
   constructor(dbDir: string, config: ContextManagerConfig) {
     this.config = config;
     this.db = initializeDatabase(dbDir);
-    this.store = new ArtifactStore(dbDir);
+    this.store = new ArtifactStore(dbDir, this.db);
     this.cache = new HotCache(config.hotCacheCapacity);
     this.snapshotManager = new StateSnapshotManager(this.db);
     this.cascade = new RetrievalCascade(this.store, this.cache, this.snapshotManager);
@@ -44,6 +44,7 @@ export class ContextManager {
       this.invalidator.invalidateExpiredTTL();
     }
 
+    const hitsBefore = this.cache.getStats().hits;
     const records = this.cascade.retrieve(taskState);
     const items = this.packer.pack(records, options.budgetTokens);
 
@@ -51,13 +52,21 @@ export class ContextManager {
       return sum + Math.ceil(item.content.length / REPORT_CHARS_PER_TOKEN);
     }, 0);
 
-    const cacheStats = this.cache.getStats();
+    const cacheHits = this.cache.getStats().hits - hitsBefore;
+
+    if (!options.includeProvenance) {
+      for (const item of items) {
+        item.sourcePath = null;
+        item.commit = null;
+        item.reasonSelected = null;
+      }
+    }
 
     return {
       items,
       totalTokens: Math.min(rawTokens, options.budgetTokens),
       retrievalTimeMs: Math.round(performance.now() - start),
-      cacheHits: cacheStats.hits,
+      cacheHits,
       staleItemsInvalidated: 0,
     };
   }
@@ -74,7 +83,6 @@ export class ContextManager {
   }
 
   close() {
-    this.store.close();
     this.db.close();
   }
 }

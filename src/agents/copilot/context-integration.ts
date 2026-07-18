@@ -41,9 +41,6 @@ export function injectContextPacket(
 
 export function extractArtifactsFromResponse(
   responseBody: any,
-  cwd: string,
-  branch: string,
-  commit: string,
 ): Array<{ type: string; content: string; path: string | null }> {
   const artifacts: Array<{ type: string; content: string; path: string | null }> = [];
 

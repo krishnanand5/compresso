@@ -74,10 +74,10 @@ export class CopilotCompressHandler extends CopilotRequestHandler {
     const model = extractModel(bodyBytes);
     const start = performance.now();
 
+    const cwd = process.cwd();
     let taskState: TaskState | null = null;
     try {
       const cm = getContextManager();
-      const cwd = process.cwd();
       taskState = captureTaskState(cwd, ctx.sessionId ?? 'unknown');
       const packet = cm.getContext(taskState, { budgetTokens: 2000, includeProvenance: true });
       if (packet.items.length > 0) {
@@ -148,25 +148,22 @@ export class CopilotCompressHandler extends CopilotRequestHandler {
     if (taskState) {
       try {
         const cm = getContextManager();
-        const cwd = process.cwd();
         const responseClone = response.clone();
         const responseText = await responseClone.text();
         const responseBody = JSON.parse(responseText);
-        const artifacts = extractArtifactsFromResponse(
-          responseBody,
-          cwd,
-          taskState.branch,
-          taskState.headCommit,
-        );
-        for (const a of artifacts) {
-          cm.recordArtifact({
-            type: 'tool_output' as const,
-            content: a.content,
-            sourceRepo: cwd,
-            sourcePath: a.path,
-            sourceCommit: taskState.headCommit,
-            sourceBranch: taskState.branch,
-          });
+        const hasToolCalls = responseBody?.choices?.some((c: any) => c?.message?.tool_calls?.length > 0);
+        if (hasToolCalls) {
+          const artifacts = extractArtifactsFromResponse(responseBody);
+          for (const a of artifacts) {
+            cm.recordArtifact({
+              type: 'tool_output' as const,
+              content: a.content,
+              sourceRepo: cwd,
+              sourcePath: a.path,
+              sourceCommit: taskState.headCommit,
+              sourceBranch: taskState.branch,
+            });
+          }
         }
       } catch {}
     }

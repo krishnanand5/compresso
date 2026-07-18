@@ -54,7 +54,7 @@ export interface ContextPacketItem {
   sourcePath: string | null;
   commit: string | null;
   timestamp: number;
-  reasonSelected: string;
+  reasonSelected: string | null;
 }
 
 export interface ContextPacket {
