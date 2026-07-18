@@ -1,15 +1,12 @@
 import type Database from 'better-sqlite3';
-import type { ArtifactStore } from './artifact-store.js';
 import type { HotCache } from './hot-cache.js';
 
 export class Invalidator {
   private db: Database.Database;
-  private store: ArtifactStore;
   private cache: HotCache;
 
-  constructor(db: Database.Database, store: ArtifactStore, cache: HotCache) {
+  constructor(db: Database.Database, cache: HotCache) {
     this.db = db;
-    this.store = store;
     this.cache = cache;
   }
 

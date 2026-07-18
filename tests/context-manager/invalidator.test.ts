@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Invalidator } from '../../src/context-manager/invalidator.js';
 import { ArtifactStore } from '../../src/context-manager/artifact-store.js';
 import { HotCache } from '../../src/context-manager/hot-cache.js';
-import { StateSnapshotManager } from '../../src/context-manager/state-snapshot.js';
 import { initializeDatabase } from '../../src/context-manager/db-schema.js';
 import { rmSync, mkdirSync } from 'fs';
 import type Database from 'better-sqlite3';
@@ -13,7 +12,6 @@ describe('Invalidator', () => {
   let db: Database.Database;
   let store: ArtifactStore;
   let cache: HotCache;
-  let snapshotManager: StateSnapshotManager;
   let invalidator: Invalidator;
 
   beforeEach(() => {
@@ -22,8 +20,7 @@ describe('Invalidator', () => {
     db = initializeDatabase(TEST_DIR);
     store = new ArtifactStore(TEST_DIR);
     cache = new HotCache(100);
-    snapshotManager = new StateSnapshotManager(db);
-    invalidator = new Invalidator(db, store, cache);
+    invalidator = new Invalidator(db, cache);
   });
 
   afterEach(() => {
