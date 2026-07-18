@@ -57,6 +57,9 @@ bench/runs/
 # Sandbox — scratch files, experiments, temporary tests, never committed
 sandbox/
 
+# Future planning documents — exploration artifacts, not part of the codebase
+future/
+
 # Project-local skills (opencode skills directory) — installed by the skills
 # system, never committed. Treat like .claude/, .codex/, .cursor/.
 .opencode/
