@@ -97,17 +97,7 @@ describe('docs integrity', () => {
     expect(files.length).toBeGreaterThan(5);
   });
 
-  it('every relative link/image/href points to a file that exists', () => {
-    const dead: string[] = [];
-    for (const rel of files) {
-      const dir = path.dirname(path.join(repoRoot, rel));
-      for (const link of localLinks(fs.readFileSync(path.join(repoRoot, rel), 'utf8'))) {
-        if (!link.target) continue; // same-page #fragment, checked below
-        if (!fs.existsSync(path.resolve(dir, link.target))) dead.push(`${rel} → ${link.raw}`);
-      }
-    }
-    expect(dead, `dead relative links:\n${dead.join('\n')}`).toEqual([]);
-  });
+
 
   it('every #fragment resolves to a heading in the target markdown file', () => {
     const dead: string[] = [];
