@@ -104,6 +104,46 @@ describe('ArtifactStore', () => {
     expect(results).toHaveLength(3);
   });
 
+  it('should query artifacts by session (branch + commit)', () => {
+    store.createArtifact({
+      type: 'file',
+      content: 'session-content-1',
+      sourceRepo: '/repo',
+      sourcePath: '/repo/a.ts',
+      sourceCommit: 'abc123',
+      sourceBranch: 'feature',
+    });
+    store.createArtifact({
+      type: 'file',
+      content: 'session-content-2',
+      sourceRepo: '/repo',
+      sourcePath: '/repo/b.ts',
+      sourceCommit: 'abc123',
+      sourceBranch: 'feature',
+    });
+    store.createArtifact({
+      type: 'file',
+      content: 'other-branch',
+      sourceRepo: '/repo',
+      sourcePath: '/repo/a.ts',
+      sourceCommit: 'abc123',
+      sourceBranch: 'main',
+    });
+    store.createArtifact({
+      type: 'file',
+      content: 'other-commit',
+      sourceRepo: '/repo',
+      sourcePath: '/repo/a.ts',
+      sourceCommit: 'def456',
+      sourceBranch: 'feature',
+    });
+
+    const results = store.queryBySession('feature', 'abc123');
+    expect(results).toHaveLength(2);
+    expect(results.every(r => r.artifact.sourceBranch === 'feature')).toBe(true);
+    expect(results.every(r => r.artifact.sourceCommit === 'abc123')).toBe(true);
+  });
+
   it('should delete an artifact and its raw content', () => {
     const artifact = store.createArtifact({
       type: 'file',

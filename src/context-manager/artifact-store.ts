@@ -39,20 +39,27 @@ export class ArtifactStore {
       sourceBranch: input.sourceBranch,
     };
 
-    this.db.prepare(`
-      INSERT INTO Artifact (id, type, content_hash, raw_location, created_at, source_repo, source_path, source_commit, source_branch)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      artifact.id,
-      artifact.type,
-      artifact.contentHash,
-      artifact.rawLocation,
-      artifact.createdAt,
-      artifact.sourceRepo,
-      artifact.sourcePath,
-      artifact.sourceCommit,
-      artifact.sourceBranch,
-    );
+    try {
+      this.db.prepare(`
+        INSERT INTO Artifact (id, type, content_hash, raw_location, created_at, source_repo, source_path, source_commit, source_branch)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        artifact.id,
+        artifact.type,
+        artifact.contentHash,
+        artifact.rawLocation,
+        artifact.createdAt,
+        artifact.sourceRepo,
+        artifact.sourcePath,
+        artifact.sourceCommit,
+        artifact.sourceBranch,
+      );
+    } catch (err) {
+      if (existsSync(rawLocation)) {
+        unlinkSync(rawLocation);
+      }
+      throw err;
+    }
 
     return artifact;
   }
@@ -81,6 +88,13 @@ export class ArtifactStore {
     const rows = this.db.prepare(
       'SELECT * FROM Artifact WHERE source_commit = ? ORDER BY created_at DESC'
     ).all(commit) as Record<string, unknown>[];
+    return rows.map(r => this.rowToRecord(r));
+  }
+
+  queryBySession(branch: string, commit: string): ArtifactRecord[] {
+    const rows = this.db.prepare(
+      'SELECT * FROM Artifact WHERE source_branch = ? AND source_commit = ? ORDER BY created_at DESC'
+    ).all(branch, commit) as Record<string, unknown>[];
     return rows.map(r => this.rowToRecord(r));
   }
 
