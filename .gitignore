@@ -13,6 +13,7 @@ package-lock.json
 # Cloudflare Workers
 .wrangler/
 .dev.vars
+.hermes/
 
 # OS
 .DS_Store
@@ -55,3 +56,7 @@ bench/runs/
 
 # Sandbox — scratch files, experiments, temporary tests, never committed
 sandbox/
+
+# Project-local skills (opencode skills directory) — installed by the skills
+# system, never committed. Treat like .claude/, .codex/, .cursor/.
+.opencode/
