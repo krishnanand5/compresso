@@ -9,6 +9,7 @@ export { RetrievalCascade } from './retrieval-cascade.js';
 export { TokenBudgetPacker } from './token-budget-packer.js';
 export { Invalidator } from './invalidator.js';
 export { loadConfig } from './config.js';
+export { captureTaskState, injectContextPacket, extractArtifactsFromResponse } from './integration-helpers.js';
 export * from './types.js';
 
 let singleton: ContextManager | null = null;

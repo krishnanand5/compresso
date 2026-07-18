@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { ContextManager } from '../../src/context-manager/context-manager.js';
-import { injectContextPacket } from '../../src/agents/copilot/context-integration.js';
+import { injectContextPacket } from '../../src/context-manager/integration-helpers.js';
 import { DEFAULT_CONFIG } from '../../src/context-manager/types.js';
 import { rmSync, mkdirSync } from 'fs';
 

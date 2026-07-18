@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { injectContextPacket } from '../../src/agents/copilot/context-integration.js';
+import { injectContextPacket } from '../../src/context-manager/integration-helpers.js';
 import type { ContextPacket } from '../../src/context-manager/types.js';
 
 describe('Copilot context integration', () => {

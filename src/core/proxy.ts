@@ -15,6 +15,8 @@ export interface ProxyConfig {
   transform?: TransformOptions | (() => TransformOptions);
   opencodeUpstream?: string;
   onRequest?: (event: ProxyEvent) => void | Promise<void>;
+  onBeforeTransform?: (body: Uint8Array, env: { cwd?: string }) => Uint8Array | Promise<Uint8Array>;
+  onAfterResponse?: (responseJson: any, env: { cwd?: string }) => void | Promise<void>;
 }
 
 export interface ProxyEvent {
@@ -211,9 +213,10 @@ function teeForUsage(res: Response): {
   errorBodyPromise: Promise<string | undefined>;
   measurementPromise: Promise<OutputMeasurement | undefined>;
   stopReasonPromise: Promise<string | undefined>;
+  responseJsonPromise: Promise<any | undefined>;
 } {
   if (!res.body) {
-    return { response: res, usagePromise: Promise.resolve(undefined), errorBodyPromise: Promise.resolve(undefined), measurementPromise: Promise.resolve(undefined), stopReasonPromise: Promise.resolve(undefined) };
+    return { response: res, usagePromise: Promise.resolve(undefined), errorBodyPromise: Promise.resolve(undefined), measurementPromise: Promise.resolve(undefined), stopReasonPromise: Promise.resolve(undefined), responseJsonPromise: Promise.resolve(undefined) };
   }
   if (res.status >= 400 && res.status < 500) {
     const [forClient, forUs] = res.body.tee();
@@ -232,15 +235,15 @@ function teeForUsage(res: Response): {
       } catch {}
       return out.length > ERROR_BODY_MAX ? out.slice(0, ERROR_BODY_MAX) : out;
     })();
-    return { response: new Response(forClient, { status: res.status, statusText: res.statusText, headers: res.headers }), usagePromise: Promise.resolve(undefined), errorBodyPromise, measurementPromise: Promise.resolve(undefined), stopReasonPromise: Promise.resolve(undefined) };
+    return { response: new Response(forClient, { status: res.status, statusText: res.statusText, headers: res.headers }), usagePromise: Promise.resolve(undefined), errorBodyPromise, measurementPromise: Promise.resolve(undefined), stopReasonPromise: Promise.resolve(undefined), responseJsonPromise: Promise.resolve(undefined) };
   }
   if (res.status >= 500) {
-    return { response: res, usagePromise: Promise.resolve(undefined), errorBodyPromise: Promise.resolve(undefined), measurementPromise: Promise.resolve(undefined), stopReasonPromise: Promise.resolve(undefined) };
+    return { response: res, usagePromise: Promise.resolve(undefined), errorBodyPromise: Promise.resolve(undefined), measurementPromise: Promise.resolve(undefined), stopReasonPromise: Promise.resolve(undefined), responseJsonPromise: Promise.resolve(undefined) };
   }
   const ct = (res.headers.get('content-type') ?? '').toLowerCase();
   const [forClient, forUs] = res.body.tee();
 
-  const scanResult = (async (): Promise<{ usage: Usage | undefined; measurement: OutputMeasurement | undefined; stopReason: string | undefined }> => {
+  const scanResult = (async (): Promise<{ usage: Usage | undefined; measurement: OutputMeasurement | undefined; stopReason: string | undefined; responseJson: any | undefined }> => {
     const reader = forUs.getReader();
     const decoder = new TextDecoder();
     let buf = '';
@@ -261,7 +264,7 @@ function teeForUsage(res: Response): {
         }
         buf += decoder.decode();
         if (buf.trim().length > 0) processSseEvent(buf, m, state);
-        return { usage: state.usage, measurement: m, stopReason: state.stopReason };
+        return { usage: state.usage, measurement: m, stopReason: state.stopReason, responseJson: undefined };
       }
       if (ct.includes('application/json')) {
         const MAX = 4 * 1024 * 1024;
@@ -272,15 +275,15 @@ function teeForUsage(res: Response): {
         }
         try {
           const j = JSON.parse(buf);
-          return { usage: normalizeUsage(j?.usage), measurement: measureFromMessageJson(j), stopReason: readStopReasonFromJson(j) };
-        } catch { return { usage: undefined, measurement: undefined, stopReason: undefined }; }
+          return { usage: normalizeUsage(j?.usage), measurement: measureFromMessageJson(j), stopReason: readStopReasonFromJson(j), responseJson: j };
+        } catch { return { usage: undefined, measurement: undefined, stopReason: undefined, responseJson: undefined }; }
       }
     } catch {}
     try { while (true) { const { done } = await reader.read(); if (done) break; } } catch {}
-    return { usage: undefined, measurement: undefined, stopReason: undefined };
+    return { usage: undefined, measurement: undefined, stopReason: undefined, responseJson: undefined };
   })();
 
-  return { response: new Response(forClient, { status: res.status, statusText: res.statusText, headers: res.headers }), usagePromise: scanResult.then((s) => s.usage), errorBodyPromise: Promise.resolve(undefined), measurementPromise: scanResult.then((s) => s.measurement), stopReasonPromise: scanResult.then((s) => s.stopReason) };
+  return { response: new Response(forClient, { status: res.status, statusText: res.statusText, headers: res.headers }), usagePromise: scanResult.then((s) => s.usage), errorBodyPromise: Promise.resolve(undefined), measurementPromise: scanResult.then((s) => s.measurement), stopReasonPromise: scanResult.then((s) => s.stopReason), responseJsonPromise: scanResult.then((s) => s.responseJson) };
 }
 
 const STRIP_REQ_HEADERS = new Set(['host', 'connection', 'keep-alive', 'proxy-connection', 'transfer-encoding', 'upgrade', 'content-length', 'expect', 'accept-encoding']);
@@ -383,6 +386,14 @@ export function createProxy(config: ProxyConfig = {}) {
     const model = readModelField(bodyIn);
     requestModel = model ?? undefined;
 
+    let processedBodyIn: Uint8Array = bodyIn;
+    if (config.onBeforeTransform) {
+      try {
+        const cwd = process.env.COMPRESSO_CWD;
+        processedBodyIn = await config.onBeforeTransform(bodyIn, { cwd }) as Uint8Array;
+      } catch {}
+    }
+
     const transformer = getTransformer(family);
     if (transformer) {
       const transformOpts = typeof config.transform === 'function' ? config.transform() : config.transform;
@@ -391,7 +402,7 @@ export function createProxy(config: ProxyConfig = {}) {
       const imageCapable = isGptFamily && model ? isImageCapableModel(model) : true;
       const effectiveOpts: import('./transform/types.js').TransformOptions = (isGptFamily && modelOk && imageCapable ? transformOpts : { ...transformOpts, compress: false }) ?? {};
       try {
-        const r = await transformer({ body: bodyIn, model: model ?? '', method: req.method, path: url.pathname, opts: effectiveOpts });
+        const r = await transformer({ body: processedBodyIn, model: model ?? '', method: req.method, path: url.pathname, opts: effectiveOpts });
         if (isGptFamily && !modelOk) r.info.reason = 'unsupported_model';
         info = r.info;
         reqBodyBytes = r.body;
@@ -401,7 +412,7 @@ export function createProxy(config: ProxyConfig = {}) {
         return new Response(JSON.stringify({ error: 'compresso transform failed' }), { status: 502, headers: { 'content-type': 'application/json' } });
       }
     } else {
-      reqBodyBytes = bodyIn;
+      reqBodyBytes = processedBodyIn;
     }
 
     const outHeaders = filterHeaders(req.headers, STRIP_REQ_HEADERS);
@@ -424,10 +435,18 @@ export function createProxy(config: ProxyConfig = {}) {
     }
 
     const firstByteMs = Date.now() - t0;
-    const { response: teed, usagePromise, errorBodyPromise, measurementPromise, stopReasonPromise } = teeForUsage(upstreamRes);
+    const { response: teed, usagePromise, errorBodyPromise, measurementPromise, stopReasonPromise, responseJsonPromise } = teeForUsage(upstreamRes);
 
-    void Promise.all([usagePromise.catch(() => undefined), errorBodyPromise.catch(() => undefined), measurementPromise.catch(() => undefined), stopReasonPromise.catch(() => undefined)])
-      .then(([usage, errorBody, measurement, stopReason]) => fire(upstreamRes.status, undefined, firstByteMs, usage, errorBody, measurement, stopReason));
+    void Promise.all([usagePromise.catch(() => undefined), errorBodyPromise.catch(() => undefined), measurementPromise.catch(() => undefined), stopReasonPromise.catch(() => undefined), responseJsonPromise.catch(() => undefined)])
+      .then(([usage, errorBody, measurement, stopReason, responseJson]) => {
+        if (config.onAfterResponse && responseJson) {
+          try {
+            const cwd = process.env.COMPRESSO_CWD;
+            void config.onAfterResponse(responseJson, { cwd });
+          } catch {}
+        }
+        fire(upstreamRes.status, undefined, firstByteMs, usage, errorBody, measurement, stopReason);
+      });
 
     return new Response(teed.body, { status: upstreamRes.status, statusText: upstreamRes.statusText, headers: filterHeaders(upstreamRes.headers, STRIP_RES_HEADERS) });
   };

@@ -6,7 +6,7 @@ import { REPORT_CHARS_PER_TOKEN } from '../../core/utils.js';
 import type { CopilotEvent, CopilotTelemetry } from './telemetry.js';
 import { getContextManager } from '../../context-manager/index.js';
 import type { TaskState } from '../../context-manager/types.js';
-import { captureTaskState, injectContextPacket, extractArtifactsFromResponse } from './context-integration.js';
+import { captureTaskState, injectContextPacket, extractArtifactsFromResponse } from '../../context-manager/integration-helpers.js';
 
 const COPILOT_COMPRESS_DEFAULTS: TransformOptions = {
   compress: true,

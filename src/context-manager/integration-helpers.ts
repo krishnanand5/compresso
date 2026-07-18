@@ -1,5 +1,5 @@
 import { execSync } from 'child_process';
-import type { TaskState, ContextPacket } from '../../context-manager/types.js';
+import type { TaskState, ContextPacket } from './types.js';
 
 export function captureTaskState(cwd: string, sessionId: string): TaskState {
   return {
