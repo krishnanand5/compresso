@@ -1,114 +1,45 @@
-// Build library ESM + declarations with tsc, then overwrite the Node CLI
-// entry with a bundled executable. The Worker target can still be built by
-// wrangler directly from src/worker.ts, but dist/worker.js is also emitted for
-// package consumers via tsc.
 import { build } from 'esbuild';
 import { mkdir, rm, readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 
-// Single source of truth for the CLI version: read it here, inline it into the
-// bundle via esbuild `define`. Reading npm_package_version at CLI *runtime* is
-// unreliable (unset for global bins / npx, or the consumer's version), so the
-// value is fixed at build time instead.
 const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
 
 const OUT = 'dist';
 if (existsSync(OUT)) await rm(OUT, { recursive: true, force: true });
 await mkdir(OUT, { recursive: true });
 
-const tsc = spawnSync('pnpm', ['exec', 'tsc', '-p', 'tsconfig.json'], {
-  stdio: 'inherit',
-  shell: false,
-});
+const tsc = spawnSync('pnpm', ['exec', 'tsc', '-p', 'tsconfig.json'], { stdio: 'inherit', shell: false });
 if (tsc.status !== 0) process.exit(tsc.status ?? 1);
 console.log('✓ emitted dist/ library modules + declarations');
 
-await build({
-  entryPoints: ['src/node.ts'],
-  outfile: 'dist/node.js',
-  bundle: true,
-  platform: 'node',
-  target: 'node18',
-  format: 'esm',
-  sourcemap: true,
-  // Inline the package version so `pxpipe --version` is correct for global/npx
-  // installs (see the note where `pkg` is read). esbuild replaces the bare
-  // identifier with the string literal at every reference.
-  define: { __COMPRESSO_VERSION__: JSON.stringify(pkg.version) },
-  // Atlas is inlined as a base64 string in src/core/atlas.ts, so no external assets.
-  external: [],
-  banner: { js: '#!/usr/bin/env node' },
-});
-
-console.log('✓ built dist/node.js');
-
-// Pre-build the shared `define` so all bundles get the same version.
 const sharedDefine = { __COMPRESSO_VERSION__: JSON.stringify(pkg.version) };
+const banner = { js: '#!/usr/bin/env node' };
 
-// dist/copilot-cli.js — Copilot session REPL (SDK left as runtime external)
-await build({
-  entryPoints: ['src/copilot-cli.ts'],
-  outfile: 'dist/copilot-cli.js',
-  bundle: true,
-  platform: 'node',
-  target: 'node18',
-  format: 'esm',
-  sourcemap: true,
-  packages: 'external',
-  define: sharedDefine,
-  banner: { js: '#!/usr/bin/env node' },
-});
-console.log('✓ built dist/copilot-cli.js');
+const ENTRIES = [
+  { in: 'src/node.ts',           out: 'dist/node.js',           external: [] },
+  { in: 'src/copilot-cli.ts',    out: 'dist/copilot-cli.js',    external: ['@github/copilot-sdk'] },
+  { in: 'src/dashboard-cli.ts',  out: 'dist/dashboard-cli.js',  external: [] },
+  { in: 'src/codex-cli.ts',      out: 'dist/codex-cli.js',     external: [] },
+  { in: 'src/opencode-cli.ts',   out: 'dist/opencode-cli.js',  external: [] },
+];
 
-// dist/dashboard-cli.js — terminal dashboard (no SDK dep, fully inlined)
-await build({
-  entryPoints: ['src/dashboard-cli.ts'],
-  outfile: 'dist/dashboard-cli.js',
-  bundle: true,
-  platform: 'node',
-  target: 'node18',
-  format: 'esm',
-  sourcemap: true,
-  external: [],
-  define: sharedDefine,
-  banner: { js: '#!/usr/bin/env node' },
-});
-console.log('✓ built dist/dashboard-cli.js');
+for (const e of ENTRIES) {
+  await build({
+    entryPoints: [e.in],
+    outfile: e.out,
+    bundle: true,
+    platform: 'node',
+    target: 'node18',
+    format: 'esm',
+    sourcemap: true,
+    packages: e.external.length > 0 ? 'external' : undefined,
+    define: sharedDefine,
+    banner,
+  });
+  console.log(`✓ built ${e.out}`);
+}
 
-// dist/codex-cli.js — Codex CLI wrapper (fully inlined, no SDK dep)
-await build({
-  entryPoints: ['src/codex-cli.ts'],
-  outfile: 'dist/codex-cli.js',
-  bundle: true,
-  platform: 'node',
-  target: 'node18',
-  format: 'esm',
-  sourcemap: true,
-  external: [],
-  define: sharedDefine,
-  banner: { js: '#!/usr/bin/env node' },
-});
-console.log('✓ built dist/codex-cli.js');
-
-// dist/opencode-cli.js — OpenCode CLI wrapper (fully inlined, no SDK dep)
-await build({
-  entryPoints: ['src/opencode-cli.ts'],
-  outfile: 'dist/opencode-cli.js',
-  bundle: true,
-  platform: 'node',
-  target: 'node18',
-  format: 'esm',
-  sourcemap: true,
-  external: [],
-  define: sharedDefine,
-  banner: { js: '#!/usr/bin/env node' },
-});
-console.log('✓ built dist/opencode-cli.js');
-
-// Smoke check: the bundled proxy CLI must report the real package version, not a
-// stale fallback. Runs the shipped artifact end-to-end and fails the build on
-// mismatch, so a broken version injection can never reach a release.
 const smoke = spawnSync(process.execPath, ['dist/node.js', '--version'], { encoding: 'utf8' });
 const printedVersion = (smoke.stdout ?? '').trim();
 if (smoke.status !== 0 || printedVersion !== pkg.version) {
