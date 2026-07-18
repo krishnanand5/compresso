@@ -4,6 +4,9 @@ import { transformOpenAIChatCompletions, transformOpenAIResponses } from '../../
 import type { TransformOptions, TransformInfo } from '../../core/utils.js';
 import { REPORT_CHARS_PER_TOKEN } from '../../core/utils.js';
 import type { CopilotEvent, CopilotTelemetry } from './telemetry.js';
+import { getContextManager } from '../../context-manager/index.js';
+import type { TaskState } from '../../context-manager/types.js';
+import { captureTaskState, injectContextPacket, extractArtifactsFromResponse } from './context-integration.js';
 
 const COPILOT_COMPRESS_DEFAULTS: TransformOptions = {
   compress: true,
@@ -67,9 +70,21 @@ export class CopilotCompressHandler extends CopilotRequestHandler {
     const isChat = path.includes('/chat/completions');
     if (!isResponses && !isChat) return fetch(request, { signal: ctx.signal });
 
-    const bodyBytes = new Uint8Array(await request.arrayBuffer());
+    let bodyBytes = new Uint8Array(await request.arrayBuffer());
     const model = extractModel(bodyBytes);
     const start = performance.now();
+
+    let taskState: TaskState | null = null;
+    try {
+      const cm = getContextManager();
+      const cwd = process.cwd();
+      taskState = captureTaskState(cwd, ctx.sessionId ?? 'unknown');
+      const packet = cm.getContext(taskState, { budgetTokens: 2000, includeProvenance: true });
+      if (packet.items.length > 0) {
+        bodyBytes = injectContextPacket(bodyBytes, packet) as Uint8Array<ArrayBuffer>;
+      }
+    } catch {}
+
     let didCompress = false;
     let outBody = new Uint8Array(bodyBytes);
     let info: TransformInfo | null = null;
@@ -128,7 +143,35 @@ export class CopilotCompressHandler extends CopilotRequestHandler {
       }
     }
 
-    return fetch(toRequest(request, outBody, ctx.signal), { signal: ctx.signal });
+    const response = await fetch(toRequest(request, outBody, ctx.signal), { signal: ctx.signal });
+
+    if (taskState) {
+      try {
+        const cm = getContextManager();
+        const cwd = process.cwd();
+        const responseClone = response.clone();
+        const responseText = await responseClone.text();
+        const responseBody = JSON.parse(responseText);
+        const artifacts = extractArtifactsFromResponse(
+          responseBody,
+          cwd,
+          taskState.branch,
+          taskState.headCommit,
+        );
+        for (const a of artifacts) {
+          cm.recordArtifact({
+            type: 'tool_output' as const,
+            content: a.content,
+            sourceRepo: cwd,
+            sourcePath: a.path,
+            sourceCommit: taskState.headCommit,
+            sourceBranch: taskState.branch,
+          });
+        }
+      } catch {}
+    }
+
+    return response;
   }
 
   override async openWebSocket(ctx: CopilotRequestContext): Promise<CopilotWebSocketForwarder> {
