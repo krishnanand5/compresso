@@ -52,7 +52,7 @@ const DEFAULT_MODEL_BASES = [
  *  text into images, so only these models can receive compressed requests.
  *  Models in `DEFAULT_MODEL_BASES` but NOT in this set are text-only and will
  *  be passed through without compression. */
-const IMAGE_CAPABLE_BASES = new Set([
+export const IMAGE_CAPABLE_BASES = new Set([
   'claude-5',
   'claude-fable-5',
   'gpt-5.6',
