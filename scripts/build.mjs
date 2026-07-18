@@ -22,6 +22,7 @@ const ENTRIES = [
   { in: 'src/dashboard-cli.ts',  out: 'dist/dashboard-cli.js',  external: [] },
   { in: 'src/codex-cli.ts',      out: 'dist/codex-cli.js',     external: [] },
   { in: 'src/opencode-cli.ts',   out: 'dist/opencode-cli.js',  external: [] },
+  { in: 'src/opencode-go-cli.ts', out: 'dist/opencode-go-cli.js', external: [] },
 ];
 
 for (const e of ENTRIES) {

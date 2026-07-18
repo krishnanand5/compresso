@@ -2,6 +2,7 @@ import type { CodingAgent, AgentArgv } from '../agents/types.js';
 
 import '../agents/codex/index.js';
 import '../agents/opencode/index.js';
+import '../agents/opencode-go/index.js';
 import '../agents/copilot/index.js';
 
 export interface DispatchEntry {
@@ -16,6 +17,7 @@ const ENTRIES: DispatchEntry[] = [
   { name: 'dashboard', entry: 'dist/dashboard-cli.js' },
   { name: 'codex',    entry: 'dist/codex-cli.js' },
   { name: 'opencode', entry: 'dist/opencode-cli.js' },
+  { name: 'opencode-go', entry: 'dist/opencode-go-cli.js' },
   { name: 'copilot',  entry: 'dist/copilot-cli.js' },
 ];
 

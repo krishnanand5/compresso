@@ -57,6 +57,7 @@ export const IMAGE_CAPABLE_BASES = new Set([
   'claude-fable-5',
   'gpt-5.6',
   'big-pickle',
+  'grok-4.5',
 ]);
 
 function falsey(v: string): boolean {
