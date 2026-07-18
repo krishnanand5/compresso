@@ -6,7 +6,7 @@ const entry = resolveSubcommand(sub ?? 'proxy');
 
 if (!entry) {
   console.error(`[compresso] unknown subcommand: ${sub}`);
-  console.error(`[compresso] known: proxy, codex, opencode, copilot, dashboard, export`);
+  console.error(`[compresso] known: proxy, codex, opencode, opencode-go, copilot, dashboard, export`);
   process.exit(2);
 }
 

@@ -18,9 +18,11 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  const proxy = await startProxyIfNeeded(argv.port);
+  const port = argv.port || opencodeAgent.defaultPort;
 
-  const child = spawnOpenCode(argv as AgentArgv, argv.port);
+  const proxy = await startProxyIfNeeded(port);
+
+  const child = spawnOpenCode({ ...argv, port }, port);
   child.on('exit', (code) => {
     if (proxy) {
       try { proxy.kill('SIGTERM'); } catch {}
