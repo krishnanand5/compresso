@@ -77,11 +77,11 @@ describe('public library API', () => {
       // empty list = compress nothing
       setAllowedModelBases([]);
       expect(isPxpipeSupportedModel('claude-fable-5')).toBe(false);
-      // null clears the override → back to the Fable + GPT 5.6 default
+      // null clears the override → back to the full default scope
       setAllowedModelBases(null);
       expect(isPxpipeSupportedModel('claude-fable-5')).toBe(true);
       expect(isPxpipeSupportedGptModel('gpt-5.6-sol')).toBe(true);
-      expect(isPxpipeSupportedGptModel('grok-4.5')).toBe(false);
+      expect(isPxpipeSupportedGptModel('grok-4.5')).toBe(true);
       expect(isPxpipeSupportedModel('claude-opus-4-8')).toBe(false);
     } finally {
       setAllowedModelBases(null); // never leak the override into other tests
@@ -108,26 +108,14 @@ describe('public library API', () => {
     expect(isPxpipeSupportedGptModel('gpt-5.6-terra')).toBe(false);
   });
 
-  it('keeps Grok opt-in by default; GPT 5.6 family is included', () => {
-    // Grok remains opt-in because its arithmetic, gist, and state results are
-    // below the Fable bar.
-    const prev = process.env.COMPRESSO_MODELS;
-    try {
-      delete process.env.COMPRESSO_MODELS;
-      expect(isPxpipeSupportedGptModel('grok-4.5')).toBe(false);
-      expect(isPxpipeSupportedGptModel('grok-4')).toBe(false);
-      expect(isPxpipeSupportedGptModel('grok-4.20')).toBe(false);
-      expect(getAllowedModelBases()).not.toContain('grok-4.5');
-      expect(getAllowedModelBases()).toEqual(['claude-5', 'claude-fable-5', 'gpt-5.6', 'deepseek-v4-flash', 'nemotron-3-ultra', 'big-pickle']);
-
-      process.env.COMPRESSO_MODELS = 'claude-fable-5,gpt-5.6-sol,grok-4.5';
-      expect(isPxpipeSupportedGptModel('grok-4.5')).toBe(true);
-      expect(isPxpipeSupportedGptModel('grok-4.5-fast')).toBe(true); // -suffix alias
-      expect(isPxpipeSupportedGptModel('gpt-5.6-sol')).toBe(true);
-    } finally {
-      if (prev === undefined) delete process.env.COMPRESSO_MODELS;
-      else process.env.COMPRESSO_MODELS = prev;
-    }
+  it('includes Go models in default scope; GPT 5.6 family is included', () => {
+    expect(isPxpipeSupportedGptModel('grok-4.5')).toBe(true);
+    expect(isPxpipeSupportedGptModel('grok-4.5-fast')).toBe(true);
+    expect(isPxpipeSupportedGptModel('grok-4')).toBe(false);
+    expect(isPxpipeSupportedGptModel('grok-4.20')).toBe(false);
+    expect(getAllowedModelBases()).toContain('grok-4.5');
+    expect(getAllowedModelBases()).toContain('deepseek-v4-flash');
+    expect(getAllowedModelBases()).toContain('deepseek-v4-pro');
   });
 
   it('honors the single COMPRESSO_MODELS scope for GPT families', () => {
