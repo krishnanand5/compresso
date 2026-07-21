@@ -65,6 +65,19 @@ async function sha8Bytes(body: Uint8Array): Promise<string> {
   return hex;
 }
 
+async function writeDebugLog(entry: Record<string, unknown>): Promise<void> {
+  if (typeof process === 'undefined') return;
+  try {
+    const { default: fs } = await import('node:fs');
+    const { default: path } = await import('node:path');
+    const { default: os } = await import('node:os');
+    const logDir = path.join(os.homedir(), '.compresso');
+    await fs.promises.mkdir(logDir, { recursive: true });
+    const logFile = path.join(logDir, 'debug.jsonl');
+    await fs.promises.appendFile(logFile, JSON.stringify(entry) + '\n', 'utf8');
+  } catch {}
+}
+
 export interface OutputMeasurement {
   textChars: number;
   thinkingChars: number;
@@ -220,7 +233,7 @@ function teeForUsage(res: Response): {
   if (!res.body) {
     return { response: res, usagePromise: Promise.resolve(undefined), errorBodyPromise: Promise.resolve(undefined), measurementPromise: Promise.resolve(undefined), stopReasonPromise: Promise.resolve(undefined), responseJsonPromise: Promise.resolve(undefined) };
   }
-  if (res.status >= 400 && res.status < 500) {
+  if (res.status >= 400) {
     const [forClient, forUs] = res.body.tee();
     const errorBodyPromise = (async (): Promise<string | undefined> => {
       const reader = forUs.getReader();
@@ -238,9 +251,6 @@ function teeForUsage(res: Response): {
       return out.length > ERROR_BODY_MAX ? out.slice(0, ERROR_BODY_MAX) : out;
     })();
     return { response: new Response(forClient, { status: res.status, statusText: res.statusText, headers: res.headers }), usagePromise: Promise.resolve(undefined), errorBodyPromise, measurementPromise: Promise.resolve(undefined), stopReasonPromise: Promise.resolve(undefined), responseJsonPromise: Promise.resolve(undefined) };
-  }
-  if (res.status >= 500) {
-    return { response: res, usagePromise: Promise.resolve(undefined), errorBodyPromise: Promise.resolve(undefined), measurementPromise: Promise.resolve(undefined), stopReasonPromise: Promise.resolve(undefined), responseJsonPromise: Promise.resolve(undefined) };
   }
   const ct = (res.headers.get('content-type') ?? '').toLowerCase();
   const [forClient, forUs] = res.body.tee();
@@ -405,15 +415,25 @@ export function createProxy(config: ProxyConfig = {}) {
     let reqBodySha8: string | undefined;
     let requestModel: string | undefined;
     let info: TransformInfo | undefined;
+    let upstreamUrl: string | undefined;
 
     const fire = (status: number, error?: string, firstByteMs?: number, usage?: Usage, errorBody?: string, measurement?: OutputMeasurement, stopReason?: string): void => {
-      const is4xx = status >= 400 && status < 500;
+      const isError = status >= 400;
       const finalize = async (): Promise<void> => {
         let reqBodyGz: Uint8Array | undefined;
-        if (is4xx && reqBodyBytes && reqBodyBytes.byteLength > 0) {
+        if (isError && reqBodyBytes && reqBodyBytes.byteLength > 0) {
           try { reqBodyGz = await gzipBytes(reqBodyBytes); } catch {}
         }
         await config.onRequest?.({ method: req.method, path: url.pathname, model: requestModel, tier: opencodeTier, status, durationMs: Date.now() - t0, firstByteMs, info, usage, error, errorBody, reqBodySha8, reqBodyGz, measurement, stopReason });
+        if (isError) {
+          try {
+            let reqBodyJson: string | undefined;
+            if (reqBodyBytes && reqBodyBytes.byteLength > 0 && reqBodyBytes.byteLength < 500_000) {
+              try { reqBodyJson = new TextDecoder().decode(reqBodyBytes); } catch {}
+            }
+            await writeDebugLog({ ts: new Date().toISOString(), method: req.method, path: url.pathname, model: requestModel, tier: opencodeTier, status, error, errorBody, info, upstreamUrl, reqBodyJson });
+          } catch {}
+        }
       };
       void finalize();
     };
@@ -474,7 +494,7 @@ export function createProxy(config: ProxyConfig = {}) {
     applyGatewayHeaders(outHeaders);
 
     const outPath = resolveUpstreamPath(url.pathname + url.search, family, { stripOpenAIV1: routes_raw.stripOpenAIV1, isOpenCodeAIPath: isOpenCodePath(url.pathname) });
-    const upstreamUrl = upstreamBase(family, opencodeTier) + outPath;
+    upstreamUrl = upstreamBase(family, opencodeTier) + outPath;
 
     let upstreamRes: Response;
     try {
