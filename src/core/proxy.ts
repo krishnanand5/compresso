@@ -3,6 +3,7 @@ import { isImageCapableModel, isPxpipeSupportedGptModel, isPxpipeSupportedModel 
 import type { Usage } from './types.js';
 import { getTransformer } from './transform/registry.js';
 import './transform/register-all.js';
+import { recordImageCostObservation } from './image-cost-cache.js';
 
 export interface ProxyConfig {
   provider?: 'cloudflare-ai-gateway';
@@ -514,6 +515,17 @@ export function createProxy(config: ProxyConfig = {}) {
             const cwd = process.env.COMPRESSO_CWD;
             void config.onAfterResponse(responseJson, { cwd });
           } catch {}
+        }
+        // Learn image cost: compare actual input tokens to baseline estimate
+        if (upstreamRes.status >= 200 && upstreamRes.status < 300 && usage && info?.compressed && info?.baselineTokens && info?.gateEval) {
+          const actualInput = usage.input_tokens ?? 0;
+          const estimatedText = info.baselineTokens;
+          if (actualInput > 0 && estimatedText > 0) {
+            // Rough ratio: actual cost / estimated text cost
+            // This overestimates image cost (includes non-imaged text tokens)
+            // but provides a useful upper bound for the gate
+            recordImageCostObservation(requestModel ?? 'unknown', info.gateEval.imageTokens, actualInput);
+          }
         }
         fire(upstreamRes.status, undefined, firstByteMs, usage, errorBody, measurement, stopReason);
       });
