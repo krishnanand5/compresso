@@ -136,6 +136,7 @@ export interface TransformInfo {
     readonly burnTextSide: number;
     readonly profitable: boolean;
   };
+  costMultiplier?: number;
   bucketChars?: BucketChars;
   historyTextChars?: number;
   keptSharpBlocks?: number;

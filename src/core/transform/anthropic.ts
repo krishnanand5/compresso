@@ -5,6 +5,8 @@ import { renderTextToPngs, shrinkColsToContent } from '../render.js';
 import type { RenderedImage } from '../render.js';
 import { compactSlabWhitespace, sha8 } from '../utils.js';
 import { resolveGptProfile } from '../gpt-model-profiles.js';
+import { evalOpenAIGate } from '../openai.js';
+import { getModelCostMultiplier } from '../image-cost-cache.js';
 
 interface AnthropicMessage {
   role: 'user' | 'assistant';
@@ -172,6 +174,24 @@ export async function transformAnthropicMessages(
     shrinkColsToContent(renderedText, maxCols, profile.style.markerScale, profile.style.font),
     profile.stripCols,
   );
+
+  const gate = evalOpenAIGate(req.model, renderedText, cols, 4);
+  const learnedMultiplier = getModelCostMultiplier(req.model);
+  const adjustedImageTokens = gate.imageTokens * learnedMultiplier;
+  info.gateEval = {
+    site: 'slab',
+    imageTokens: gate.imageTokens,
+    textTokens: gate.textTokens,
+    burnImageSide: 0,
+    burnTextSide: 0,
+    profitable: adjustedImageTokens < gate.textTokens,
+  };
+  info.costMultiplier = learnedMultiplier;
+  if (adjustedImageTokens >= gate.textTokens) {
+    info.reason = `not_profitable (slab=${combined.length} chars, adjustedImageTokens=${Math.round(adjustedImageTokens)} > textTokens=${gate.textTokens}, multiplier=${learnedMultiplier.toFixed(2)})`;
+    info.passthroughReasons = { not_profitable: 1 };
+    return { body, info };
+  }
 
   const images = await renderTextToPngs(renderedText, cols, profile.style, profile.maxHeightPx, undefined, o.cache);
   if (images.length === 0) {
