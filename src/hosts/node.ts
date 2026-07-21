@@ -32,6 +32,7 @@ import {
   dashboardPath,
   type DashboardRoute,
 } from '../dashboard.js';
+import { getContextManager, captureTaskState, injectContextPacket, extractArtifactsFromResponse } from '../context-manager/index.js';
 
 /** Runtime config. The core transform tuning comes from DEFAULTS in
  *  transform.ts; startup knobs cover deployment plus emergency GPT scope
@@ -829,6 +830,39 @@ async function main(): Promise<void> {
     transform: () => {
       if (forcePassthrough || !dashboard.getCompressionEnabled()) return { compress: false };
       return { cache: renderCache };
+    },
+    onBeforeTransform: (body, env) => {
+      try {
+        const cm = getContextManager();
+        const cwd = env.cwd ?? process.cwd();
+        const sessionId = `proxy-${Date.now()}`;
+        const taskState = captureTaskState(cwd, sessionId);
+        const packet = cm.getContext(taskState, { budgetTokens: 2000, includeProvenance: true });
+        if (packet.items.length > 0) {
+          return injectContextPacket(body, packet);
+        }
+      } catch {}
+      return body;
+    },
+    onAfterResponse: (responseJson, env) => {
+      try {
+        const cm = getContextManager();
+        const hasToolCalls = responseJson?.choices?.some((c: any) => c?.message?.tool_calls?.length > 0);
+        if (hasToolCalls) {
+          const cwd = env.cwd ?? process.cwd();
+          const artifacts = extractArtifactsFromResponse(responseJson);
+          for (const a of artifacts) {
+            cm.recordArtifact({
+              type: 'tool_output' as const,
+              content: a.content,
+              sourceRepo: cwd,
+              sourcePath: a.path,
+              sourceCommit: null,
+              sourceBranch: null,
+            });
+          }
+        }
+      } catch {}
     },
     onRequest: async (e) => {
       e.client = process.env.COMPRESSO_CLIENT ?? 'unknown';

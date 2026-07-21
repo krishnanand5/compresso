@@ -16,9 +16,11 @@ export async function main(): Promise<void> {
     process.exit(0);
   }
 
-  const proxy = await startProxyIfNeeded(argv.port, { client: 'opencode-go' });
+  const port = argv.port || opencodeGoAgent.defaultPort;
 
-  const child = spawnOpenCodeGo(argv, argv.port);
+  const proxy = await startProxyIfNeeded(port, { client: 'opencode-go' });
+
+  const child = spawnOpenCodeGo(argv, port);
   child.on('exit', (code) => {
     if (proxy) {
       try { proxy.kill('SIGTERM'); } catch {}

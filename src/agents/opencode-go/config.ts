@@ -58,10 +58,20 @@ export async function writeOpenCodeGoConfig(opts: {
   console.log('  4. Run `/models` to see available Go models');
   console.log('');
   console.log('Available Go models (use with --model flag):');
-  console.log('  - opencode-go/deepseek-v4-flash');
-  console.log('  - opencode-go/deepseek-v4-pro');
   console.log('  - opencode-go/grok-4.5');
+  console.log('  - opencode-go/glm-5.2');
+  console.log('  - opencode-go/glm-5.1');
   console.log('  - opencode-go/kimi-k3');
-  console.log('  - opencode-go/qwen3.7-max');
+  console.log('  - opencode-go/kimi-k2.7-code');
+  console.log('  - opencode-go/kimi-k2.6');
+  console.log('  - opencode-go/deepseek-v4-pro');
+  console.log('  - opencode-go/deepseek-v4-flash');
   console.log('  - opencode-go/mimo-v2.5');
+  console.log('  - opencode-go/mimo-v2.5-pro');
+  console.log('  - opencode-go/minimax-m3');
+  console.log('  - opencode-go/minimax-m2.7');
+  console.log('  - opencode-go/minimax-m2.5');
+  console.log('  - opencode-go/qwen3.7-max');
+  console.log('  - opencode-go/qwen3.7-plus');
+  console.log('  - opencode-go/qwen3.6-plus');
 }

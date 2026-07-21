@@ -91,6 +91,20 @@ export interface TrackEvent {
   /** Approx chars in that pinned prefix (growth vs pure-invalidation split). */
   cache_prefix_bytes?: number;
 
+  // Context manager fields:
+  /** Tokens in the optimized context packet injected by the context manager. */
+  cm_packet_tokens?: number;
+  /** Number of items in the context packet. */
+  cm_packet_items?: number;
+  /** Time in ms to retrieve + pack context. */
+  cm_retrieval_time_ms?: number;
+  /** RAM cache hits during retrieval. */
+  cm_cache_hits?: number;
+  /** Number of stale items invalidated before this request. */
+  cm_stale_items?: number;
+  /** Actual tokens / budget tokens (0.0-1.0). */
+  cm_budget_utilization?: number;
+
   // From TransformInfo.env:
   cwd?: string;
   is_git_repo?: boolean;

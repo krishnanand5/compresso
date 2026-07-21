@@ -191,7 +191,7 @@ describe('serveFragment', () => {
       // Sol remains available and ordered before GPT 5.5.
       expect(off.indexOf('GPT 5.6 Sol')).toBeLessThan(off.indexOf('GPT 5.5'));
       expect(getAllowedModelBases()).toContain('claude-fable-5');
-      expect(getAllowedModelBases()).not.toContain('grok-4.5');
+      expect(getAllowedModelBases()).toContain('grok-4.5');
       expect(getAllowedModelBases()).not.toContain('gpt-5.6-sol');
       expect(getAllowedModelBases()).not.toContain('gpt-5.5');
 

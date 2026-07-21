@@ -21,6 +21,8 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
+  const port = argv.port || codexAgent.defaultPort;
+
   const apiKey = argv.apiKey ?? process.env.OPENAI_API_KEY ?? '';
   if (!apiKey) {
     console.error('No API key found. Set OPENAI_API_KEY or pass --api-key.');
@@ -28,11 +30,11 @@ async function main(): Promise<void> {
   }
 
   // Ensure proxy is running
-  const proxy = await startProxyIfNeeded(argv.port);
+  const proxy = await startProxyIfNeeded(port);
   // If we started a new proxy, wait for it to be ready (already awaited inside startProxyIfNeeded)
 
   // Spawn Codex binary
-  const child = spawnCodex(argv as AgentArgv, argv.port);
+  const child = spawnCodex({ ...argv, port }, port);
   child.on('exit', (code) => {
     // Cleanup proxy if we started it
     if (proxy) {

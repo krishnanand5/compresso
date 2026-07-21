@@ -94,6 +94,24 @@ const GROK_MODEL_CATALOG: ReadonlyArray<{ id: string; label: string }> = [
   { id: 'grok-4.5', label: 'Grok 4.5' },
 ];
 
+const GO_MODEL_CATALOG: ReadonlyArray<{ id: string; label: string }> = [
+  { id: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash' },
+  { id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
+  { id: 'glm-5.2', label: 'GLM 5.2' },
+  { id: 'glm-5.1', label: 'GLM 5.1' },
+  { id: 'kimi-k3', label: 'Kimi K3' },
+  { id: 'kimi-k2.7-code', label: 'Kimi K2.7 Code' },
+  { id: 'kimi-k2.6', label: 'Kimi K2.6' },
+  { id: 'mimo-v2.5', label: 'MiMo V2.5' },
+  { id: 'mimo-v2.5-pro', label: 'MiMo V2.5 Pro' },
+  { id: 'minimax-m3', label: 'MiniMax M3' },
+  { id: 'minimax-m2.7', label: 'MiniMax M2.7' },
+  { id: 'minimax-m2.5', label: 'MiniMax M2.5' },
+  { id: 'qwen3.7-max', label: 'Qwen3.7 Max' },
+  { id: 'qwen3.7-plus', label: 'Qwen3.7 Plus' },
+  { id: 'qwen3.6-plus', label: 'Qwen3.6 Plus' },
+];
+
 export function renderModelsFragment(
   active: string[],
   configured: string[],
@@ -101,7 +119,7 @@ export function renderModelsFragment(
 ): string {
   const on = new Set(active);
   const labelOf = new Map(
-    [...MODEL_CATALOG, ...GPT_MODEL_CATALOG, ...GROK_MODEL_CATALOG].map((m) => [m.id, m.label]),
+    [...MODEL_CATALOG, ...GPT_MODEL_CATALOG, ...GROK_MODEL_CATALOG, ...GO_MODEL_CATALOG].map((m) => [m.id, m.label]),
   );
   // Union the catalog with env-configured + active ids so COMPRESSO_MODELS-enabled
   // families always show as toggles, then split by family for the two sections.
@@ -111,6 +129,7 @@ export function renderModelsFragment(
     ...MODEL_CATALOG.map((m) => m.id),
     ...GPT_MODEL_CATALOG.map((m) => m.id),
     ...GROK_MODEL_CATALOG.map((m) => m.id),
+    ...GO_MODEL_CATALOG.map((m) => m.id),
     ...configured,
     ...active,
   ]) {

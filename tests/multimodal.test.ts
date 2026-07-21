@@ -20,7 +20,7 @@ const textOnlyStub: CodingAgent = {
   family: 'base-url',
   binaryName: 'txt',
   defaultPort: 47901,
-  supportedModels: ['deepseek-v4-flash'],
+  supportedModels: ['mimo-v2.5'],
   envVars: () => ({}),
 };
 
