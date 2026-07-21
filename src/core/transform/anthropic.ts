@@ -183,6 +183,9 @@ export async function transformAnthropicMessages(
   info.imageCount = images.length;
   info.imageBytes = images.reduce((sum, img) => sum + img.png.length, 0);
   info.compressedChars = combined.length;
+  info.baselineTokens = Math.ceil(combined.length / 4);
+  info.baselineCacheableTokens = Math.ceil(combined.length / 4);
+  info.baselineProbeStatus = 'ok';
 
   const imageParts = images.map(anthropicImagePart);
 
