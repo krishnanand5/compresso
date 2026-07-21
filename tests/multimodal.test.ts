@@ -20,7 +20,7 @@ const textOnlyStub: CodingAgent = {
   family: 'base-url',
   binaryName: 'txt',
   defaultPort: 47901,
-  supportedModels: ['mimo-v2.5'],
+  supportedModels: ['mimo-v2.5-pro'],
   envVars: () => ({}),
 };
 
