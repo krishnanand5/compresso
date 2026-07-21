@@ -63,3 +63,4 @@ future/
 # Project-local skills (opencode skills directory) — installed by the skills
 # system, never committed. Treat like .claude/, .codex/, .cursor/.
 .opencode/
+opencode.json
