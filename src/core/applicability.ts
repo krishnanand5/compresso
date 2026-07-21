@@ -80,6 +80,7 @@ export const IMAGE_CAPABLE_BASES = new Set([
   'kimi-k3',
   'kimi-k2.7-code',
   'kimi-k2.6',
+  'mimo-v2.5',
   'minimax-m3',
   'minimax-m2.7',
   'minimax-m2.5',
