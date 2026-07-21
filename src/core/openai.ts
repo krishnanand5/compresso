@@ -606,7 +606,7 @@ function droppedCodepointsTop(droppedCodepoints: Map<number, number>): Record<st
  *  `charsPerToken` to force the length/cpt lever (tests use 1). Images bill full
  *  pages at maxHeight and the last page at residual height — charging every page
  *  as a full strip over-states cost and blocks profitable collapses. */
-function evalOpenAIGate(
+export function evalOpenAIGate(
   model: string,
   renderedText: string,
   cols: number,
