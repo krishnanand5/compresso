@@ -1,9 +1,62 @@
 import type { Transformer } from './types.js';
 import { registerTransformer } from './registry.js';
+import type { TransformOptions, TransformInfo } from '../utils.js';
+import { renderTextToPngs } from '../render.js';
+import type { RenderedImage } from '../render.js';
+import { compactSlabWhitespace, sha8 } from '../utils.js';
+import { resolveGptProfile } from '../gpt-model-profiles.js';
 
-const anthropicTransformer: Transformer = async ({ body }) => ({
-  body,
-  info: {
+interface AnthropicMessage {
+  role: 'user' | 'assistant';
+  content: string | Array<{ type: string; text?: string; [key: string]: unknown }>;
+}
+
+interface AnthropicRequest {
+  model: string;
+  max_tokens: number;
+  system?: string | Array<{ type: string; text?: string; cache_control?: { type: string }; [key: string]: unknown }>;
+  messages: AnthropicMessage[];
+  tools?: Array<{
+    name: string;
+    description?: string;
+    input_schema: Record<string, unknown>;
+    cache_control?: { type: string };
+  }>;
+  [key: string]: unknown;
+}
+
+function contentText(content: string | Array<{ type: string; text?: string; [key: string]: unknown }>): string {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content
+    .filter((b) => b.type === 'text' && typeof b.text === 'string')
+    .map((b) => b.text as string)
+    .join('\n\n');
+}
+
+function firstUserText(req: AnthropicRequest): string {
+  for (const msg of req.messages) {
+    if (msg.role === 'user') {
+      return contentText(msg.content);
+    }
+  }
+  return '';
+}
+
+function anthropicImagePart(img: RenderedImage): { type: 'image'; source: { type: 'base64'; media_type: string; data: string } } {
+  const b64 = Buffer.from(img.png).toString('base64');
+  return {
+    type: 'image',
+    source: {
+      type: 'base64',
+      media_type: 'image/png',
+      data: b64,
+    },
+  };
+}
+
+function emptyInfo(): TransformInfo {
+  return {
     compressed: false,
     origChars: 0,
     compressedChars: 0,
@@ -12,7 +65,139 @@ const anthropicTransformer: Transformer = async ({ body }) => ({
     staticChars: 0,
     dynamicChars: 0,
     dynamicBlockCount: 0,
-  },
-});
+  };
+}
 
-registerTransformer('anthropic', anthropicTransformer);
+const ANTHROPIC_HEADER = `## COMPRESSED CONTEXT
+The following content has been rendered as images for token efficiency.
+Read the images carefully — they contain verbatim tool definitions, system instructions, and context.
+
+====\n\n`;
+
+export async function transformAnthropicMessages(
+  body: Uint8Array,
+  opts: TransformOptions = {},
+): Promise<{ body: Uint8Array; info: TransformInfo }> {
+  const o = {
+    compress: opts.compress ?? true,
+    compressTools: opts.compressTools ?? true,
+    minCompressChars: opts.minCompressChars ?? 2000,
+    cols: opts.cols,
+    reflow: opts.reflow ?? true,
+    cache: opts.cache,
+  };
+  const info = emptyInfo();
+  if (!o.compress) {
+    info.reason = 'compress=false';
+    return { body, info };
+  }
+
+  let req: AnthropicRequest;
+  try {
+    req = JSON.parse(new TextDecoder().decode(body));
+  } catch (e) {
+    info.reason = `parse_error: ${(e as Error).message}`;
+    return { body, info };
+  }
+
+  if (!Array.isArray(req.messages)) {
+    info.reason = 'parse_error: messages must be an array';
+    return { body, info };
+  }
+
+  const firstUserIdx = req.messages.findIndex((m) => m.role === 'user');
+  if (firstUserIdx < 0) {
+    info.reason = 'no_user_message';
+    return { body, info };
+  }
+
+  const systemTexts: string[] = [];
+  let hasCacheControl = false;
+
+  if (typeof req.system === 'string') {
+    systemTexts.push(req.system);
+    info.staticChars += req.system.length;
+  } else if (Array.isArray(req.system)) {
+    for (const block of req.system) {
+      if (block.type === 'text' && typeof block.text === 'string') {
+        systemTexts.push(block.text);
+        info.staticChars += block.text.length;
+      }
+      if (block.cache_control) hasCacheControl = true;
+    }
+  }
+
+  const toolTexts: string[] = [];
+  if (o.compressTools && Array.isArray(req.tools)) {
+    for (const tool of req.tools) {
+      const parts: string[] = [];
+      parts.push(`## Tool: ${tool.name}`);
+      if (tool.description) parts.push(tool.description);
+      parts.push(`\`\`\`json\n${JSON.stringify(tool.input_schema, null, 2)}\n\`\`\``);
+      const toolText = parts.join('\n\n');
+      toolTexts.push(toolText);
+      info.staticChars += toolText.length;
+    }
+  }
+
+  const combinedRaw = [...systemTexts, ...toolTexts].filter((s) => s.length > 0).join('\n\n');
+  info.origChars = combinedRaw.length;
+
+  if (!combinedRaw) {
+    info.reason = 'no_static_context';
+    return { body, info };
+  }
+
+  const firstUser = firstUserText(req);
+  if (firstUser) info.firstUserSha8 = await sha8(firstUser);
+
+  const combined = compactSlabWhitespace(combinedRaw).trimEnd();
+  const minCompressChars = o.minCompressChars ?? 2000;
+  if (combined.length < minCompressChars) {
+    info.reason = `below_min_chars (${combined.length} < ${minCompressChars})`;
+    return { body, info };
+  }
+
+  const numCols = 1;
+  const profile = resolveGptProfile(req.model);
+  const maxCols = o.cols ?? profile.stripCols;
+  const reflowNote = o.reflow
+    ? ' The glyph ↵ (U+21B5) marks an original hard line break in content; treat it as a real newline.'
+    : '';
+  const header = ANTHROPIC_HEADER.replace('\n====', reflowNote + '\n====');
+  const renderedText = header + combined;
+
+  const cols = Math.min(
+    maxCols,
+    Math.max(1, Math.floor(2000 / combined.length) * maxCols),
+  );
+
+  const images = await renderTextToPngs(renderedText, cols, profile.style, profile.maxHeightPx, undefined, o.cache);
+  if (images.length === 0) {
+    info.reason = 'render_empty';
+    return { body, info };
+  }
+
+  info.compressed = true;
+  info.imageCount = images.length;
+  info.imageBytes = images.reduce((sum, img) => sum + img.png.length, 0);
+  info.compressedChars = combined.length;
+
+  const imageParts = images.map(anthropicImagePart);
+
+  const transformed: AnthropicRequest = {
+    ...req,
+    system: imageParts as unknown as AnthropicRequest['system'],
+  };
+
+  if (hasCacheControl && imageParts.length > 0) {
+    const lastImage = imageParts[imageParts.length - 1] as { source: { type: string; media_type: string; data: string } };
+    (lastImage.source as Record<string, unknown>).cache_control = { type: 'ephemeral' };
+  }
+
+  const outBody = new TextEncoder().encode(JSON.stringify(transformed));
+  info.reason = 'compressed';
+  return { body: outBody, info };
+}
+
+registerTransformer('anthropic', transformAnthropicMessages as unknown as Transformer);
