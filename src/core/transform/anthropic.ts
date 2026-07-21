@@ -1,7 +1,7 @@
 import type { Transformer } from './types.js';
 import { registerTransformer } from './registry.js';
 import type { TransformOptions, TransformInfo } from '../utils.js';
-import { renderTextToPngs } from '../render.js';
+import { renderTextToPngs, shrinkColsToContent } from '../render.js';
 import type { RenderedImage } from '../render.js';
 import { compactSlabWhitespace, sha8 } from '../utils.js';
 import { resolveGptProfile } from '../gpt-model-profiles.js';
@@ -73,6 +73,8 @@ The following content has been rendered as images for token efficiency.
 Read the images carefully — they contain verbatim tool definitions, system instructions, and context.
 
 ====\n\n`;
+
+const ANTHROPIC_POINTER = 'The full instructions for this message were rendered into image(s) attached to the first user message by compresso. Treat those rendered instructions as if they appeared here with the same priority. Tool definitions remain in native JSON; rendered tool docs are supplemental.';
 
 export async function transformAnthropicMessages(
   body: Uint8Array,
@@ -158,7 +160,6 @@ export async function transformAnthropicMessages(
     return { body, info };
   }
 
-  const numCols = 1;
   const profile = resolveGptProfile(req.model);
   const maxCols = o.cols ?? profile.stripCols;
   const reflowNote = o.reflow
@@ -168,8 +169,8 @@ export async function transformAnthropicMessages(
   const renderedText = header + combined;
 
   const cols = Math.min(
-    maxCols,
-    Math.max(1, Math.floor(2000 / combined.length) * maxCols),
+    shrinkColsToContent(renderedText, maxCols, profile.style.markerScale, profile.style.font),
+    profile.stripCols,
   );
 
   const images = await renderTextToPngs(renderedText, cols, profile.style, profile.maxHeightPx, undefined, o.cache);
@@ -185,15 +186,34 @@ export async function transformAnthropicMessages(
 
   const imageParts = images.map(anthropicImagePart);
 
-  const transformed: AnthropicRequest = {
-    ...req,
-    system: imageParts as unknown as AnthropicRequest['system'],
-  };
-
   if (hasCacheControl && imageParts.length > 0) {
     const lastImage = imageParts[imageParts.length - 1] as { source: { type: string; media_type: string; data: string } };
     (lastImage.source as Record<string, unknown>).cache_control = { type: 'ephemeral' };
   }
+
+  const firstUserMsg = req.messages[firstUserIdx]!;
+  const existingContent: Array<{ type: string; text?: string; [key: string]: unknown }> =
+    typeof firstUserMsg.content === 'string'
+      ? [{ type: 'text', text: firstUserMsg.content }]
+      : Array.isArray(firstUserMsg.content)
+        ? firstUserMsg.content
+        : [];
+
+  const newFirstUserContent = [
+    ...imageParts,
+    { type: 'text', text: '[End of rendered system/tool context]' },
+    ...existingContent,
+  ];
+
+  const transformed: AnthropicRequest = {
+    ...req,
+    system: ANTHROPIC_POINTER,
+    messages: [
+      ...req.messages.slice(0, firstUserIdx),
+      { role: 'user' as const, content: newFirstUserContent },
+      ...req.messages.slice(firstUserIdx + 1),
+    ],
+  };
 
   const outBody = new TextEncoder().encode(JSON.stringify(transformed));
   info.reason = 'compressed';
