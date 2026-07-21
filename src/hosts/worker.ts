@@ -9,6 +9,7 @@ export interface Env {
   OPENAI_UPSTREAM?: string;
   ANTHROPIC_UPSTREAM?: string;
   COMPRESSO_OPENCODE_UPSTREAM?: string;
+  COMPRESSO_OPENCODE_GO_UPSTREAM?: string;
   COMPRESSO_MODELS?: string;
   COMPRESSO_PROVIDER?: string;
   COMPRESSO_GATEWAY_BASE_URL?: string;
@@ -50,6 +51,7 @@ export default {
       upstream: getEnv(env, 'ANTHROPIC_UPSTREAM') ?? sharedUpstream ?? 'https://api.anthropic.com',
       openAIUpstream: getEnv(env, 'OPENAI_UPSTREAM') ?? sharedUpstream ?? 'https://api.openai.com',
       opencodeUpstream: getEnv(env, 'COMPRESSO_OPENCODE_UPSTREAM') ?? sharedUpstream ?? 'https://opencode.ai/zen/v1',
+      opencodeGoUpstream: getEnv(env, 'COMPRESSO_OPENCODE_GO_UPSTREAM') ?? sharedUpstream ?? 'https://opencode.ai/zen/go/v1',
       apiKey: getEnv(env, 'ANTHROPIC_API_KEY'),
       openAIApiKey: getEnv(env, 'OPENAI_API_KEY'),
       transform: () => {

@@ -1567,26 +1567,6 @@ export class DashboardState {
 }
 
 // Register per-agent stats providers.
-registerStatsProvider('opencode-go', async (opts) => {
-  const goFile = opts?.eventsFile
-    ? opts.eventsFile.replace('events.jsonl', 'opencode-go-events.jsonl')
-    : undefined;
-  if (!goFile || !fs.existsSync(goFile)) return undefined;
-  const agg = await readCopilotEventsFile(goFile);
-  if (!agg) return undefined;
-  return {
-    id: 'opencode-go',
-    displayName: 'OpenCode Go',
-    events: agg.totalTurns,
-    sessions: agg.totalSessions,
-    origTokens: agg.origTokensTotal,
-    imageTokens: agg.imageTokensTotal,
-    savingsPct: agg.origTokensTotal > 0
-      ? Math.round((1 - agg.imageTokensTotal / agg.origTokensTotal) * 100)
-      : 0,
-  };
-});
-
 registerStatsProvider('copilot', async (opts) => {
   const copilotFile = opts?.eventsFile
     ? opts.eventsFile.replace('events.jsonl', 'copilot-events.jsonl')

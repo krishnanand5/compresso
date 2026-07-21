@@ -3,9 +3,10 @@ import { ApiFamily, TransformInfo, TransformRequest, TransformResult, Transforme
 
 describe('transform types', () => {
   it('ApiFamily includes expected values', () => {
-    const families: ApiFamily[] = ['anthropic', 'openai-chat', 'openai-responses', 'opencode-zen'];
+    const families: ApiFamily[] = ['anthropic', 'openai-chat', 'openai-responses', 'opencode'];
     expect(families).toContain('anthropic');
     expect(families).toContain('openai-chat');
+    expect(families).toContain('opencode');
   });
 
   it('Transformer works with mock', async () => {

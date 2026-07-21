@@ -47,6 +47,7 @@ interface RuntimeConfig {
   upstream: string;
   openAIUpstream: string;
   opencodeUpstream: string;
+  opencodeGoUpstream: string;
   apiKey?: string;
   openAIApiKey?: string;
   provider?: 'cloudflare-ai-gateway';
@@ -109,6 +110,7 @@ function parseCli(argv: string[]): RuntimeConfig {
     upstream: process.env.ANTHROPIC_UPSTREAM ?? sharedUpstream ?? 'https://api.anthropic.com',
     openAIUpstream: process.env.OPENAI_UPSTREAM ?? sharedUpstream ?? 'https://api.openai.com',
     opencodeUpstream: process.env.COMPRESSO_OPENCODE_UPSTREAM ?? sharedUpstream ?? 'https://opencode.ai/zen/v1',
+    opencodeGoUpstream: process.env.COMPRESSO_OPENCODE_GO_UPSTREAM ?? sharedUpstream ?? 'https://opencode.ai/zen/go/v1',
     apiKey: process.env.ANTHROPIC_API_KEY,
     openAIApiKey: process.env.OPENAI_API_KEY,
     provider: parseProvider(process.env.COMPRESSO_PROVIDER),
@@ -168,8 +170,10 @@ Environment:
   COMPRESSO_LOG            JSONL events path (default ~/.compresso/events.jsonl)
   COMPRESSO_DUMP_DIR       debug: write every rendered PNG here (what the model
                            sees); off unless set. Compress arm only.
-  COMPRESSO_OPENCODE_UPSTREAM OpenCode Zen upstream for free models
-                           (default https://opencode.ai/zen/v1)
+  COMPRESSO_OPENCODE_UPSTREAM OpenCode Zen upstream
+                            (default https://opencode.ai/zen/v1)
+  COMPRESSO_OPENCODE_GO_UPSTREAM OpenCode Go upstream
+                            (default https://opencode.ai/zen/go/v1)
 
 Use with Claude Code:
   ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude
@@ -825,6 +829,7 @@ async function main(): Promise<void> {
     upstream: opts.upstream,
     openAIUpstream: opts.openAIUpstream,
     opencodeUpstream: opts.opencodeUpstream,
+    opencodeGoUpstream: opts.opencodeGoUpstream,
     apiKey: opts.apiKey,
     openAIApiKey: opts.openAIApiKey,
     transform: () => {

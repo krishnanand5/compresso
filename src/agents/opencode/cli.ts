@@ -13,7 +13,11 @@ async function main(): Promise<void> {
   }
 
   if (argv.setup) {
-    await opencodeAgent.writeConfig?.({ port: argv.port, model: argv.model });
+    await opencodeAgent.writeConfig?.({ 
+      port: argv.port || opencodeAgent.defaultPort, 
+      model: argv.model,
+      apiKey: argv.apiKey 
+    });
     console.log('Config written.');
     process.exit(0);
   }

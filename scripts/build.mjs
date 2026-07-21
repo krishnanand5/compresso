@@ -17,12 +17,11 @@ const sharedDefine = { __COMPRESSO_VERSION__: JSON.stringify(pkg.version) };
 const banner = { js: '#!/usr/bin/env node' };
 
 const ENTRIES = [
-  { in: 'src/node.ts',           out: 'dist/node.js',           external: [] },
+  { in: 'src/node.ts',           out: 'dist/node.js',           external: ['better-sqlite3'] },
   { in: 'src/copilot-cli.ts',    out: 'dist/copilot-cli.js',    external: ['@github/copilot-sdk'] },
   { in: 'src/dashboard-cli.ts',  out: 'dist/dashboard-cli.js',  external: [] },
   { in: 'src/codex-cli.ts',      out: 'dist/codex-cli.js',     external: [] },
   { in: 'src/opencode-cli.ts',   out: 'dist/opencode-cli.js',  external: [] },
-  { in: 'src/opencode-go-cli.ts', out: 'dist/opencode-go-cli.js', external: [] },
 ];
 
 for (const e of ENTRIES) {

@@ -1,5 +1,5 @@
 import type { TransformOptions, TransformInfo } from './utils.js';
-import { isImageCapableModel, isPxpipeSupportedGptModel } from './applicability.js';
+import { isImageCapableModel, isPxpipeSupportedGptModel, isPxpipeSupportedModel } from './applicability.js';
 import type { Usage } from './types.js';
 import { getTransformer } from './transform/registry.js';
 import './transform/register-all.js';
@@ -12,8 +12,9 @@ export interface ProxyConfig {
   apiKey?: string;
   openAIUpstream?: string;
   openAIApiKey?: string;
-  transform?: TransformOptions | (() => TransformOptions);
   opencodeUpstream?: string;
+  opencodeGoUpstream?: string;
+  transform?: TransformOptions | (() => TransformOptions);
   onRequest?: (event: ProxyEvent) => void | Promise<void>;
   onBeforeTransform?: (body: Uint8Array, env: { cwd?: string }) => Uint8Array | Promise<Uint8Array>;
   onAfterResponse?: (responseJson: any, env: { cwd?: string }) => void | Promise<void>;
@@ -25,6 +26,7 @@ export interface ProxyEvent {
   model?: string;
   client?: string;
   cwd?: string;
+  tier?: OpenCodeTier;
   status: number;
   durationMs: number;
   firstByteMs?: number;
@@ -307,7 +309,8 @@ function isCanonicalOpenAIPath(pathname: string, headers: Headers, hasOpenAIKey:
   return pathname === '/v1/chat/completions' || pathname === '/v1/responses' || pathname.startsWith('/v1/responses/') || (isModelsPath && looksOpenAIAuth);
 }
 
-type ApiFamily = 'anthropic' | 'openai-chat' | 'openai-responses' | 'opencode-zen';
+type ApiFamily = 'anthropic' | 'openai-chat' | 'openai-responses' | 'opencode';
+type OpenCodeTier = 'zen' | 'go';
 
 function isOpenAIChatPath(pathname: string): boolean {
   return pathname === '/v1/chat/completions' || pathname === '/openai/v1/chat/completions';
@@ -319,11 +322,35 @@ function isOpenAIResponsesPath(pathname: string): boolean {
     || pathname === '/openai/responses';
 }
 
+function isOpenCodePath(pathname: string): boolean {
+  return pathname.startsWith('/zen/v1/') || pathname.startsWith('/zen/go/v1/');
+}
+
+function isOpenCodeGoPath(pathname: string): boolean {
+  return pathname.startsWith('/zen/go/v1/');
+}
+
+function isOpenCodeResponsesPath(pathname: string): boolean {
+  return pathname === '/zen/v1/responses' || pathname === '/zen/go/v1/responses';
+}
+
+function isOpenCodeChatPath(pathname: string): boolean {
+  return pathname === '/zen/v1/chat/completions' || pathname === '/zen/go/v1/chat/completions';
+}
+
+function isOpenCodeMessagesPath(pathname: string): boolean {
+  return pathname === '/zen/v1/messages' || pathname === '/zen/go/v1/messages';
+}
+
+function detectOpenCodeTier(pathname: string): OpenCodeTier {
+  return isOpenCodeGoPath(pathname) ? 'go' : 'zen';
+}
+
 function pickFamily(method: string, pathname: string, headers: Headers, config: ProxyConfig): ApiFamily {
-  const isOpenCodeAIPath = pathname.startsWith('/zen/v1/');
   const isPost = method === 'POST';
-  if (isOpenCodeAIPath) {
-    if (isPost && (pathname === '/zen/v1/chat/completions' || pathname === '/zen/v1/responses')) return 'opencode-zen';
+  if (isOpenCodePath(pathname)) {
+    if (isPost && (isOpenCodeChatPath(pathname) || isOpenCodeResponsesPath(pathname))) return 'opencode';
+    if (isPost && isOpenCodeMessagesPath(pathname)) return 'opencode';
     return 'anthropic';
   }
   if (isPost && isOpenAIChatPath(pathname)) return 'openai-chat';
@@ -337,7 +364,12 @@ function pickFamily(method: string, pathname: string, headers: Headers, config: 
 }
 
 function resolveUpstreamPath(pathname: string, family: ApiFamily, routes: { stripOpenAIV1: boolean; isOpenCodeAIPath: boolean }): string {
-  if (family === 'opencode-zen') return pathname.replace(/^\/zen\/v1/, '');
+  if (family === 'opencode') {
+    // Strip /zen/go/v1 or /zen/v1 prefix
+    if (pathname.startsWith('/zen/go/v1')) return pathname.replace(/^\/zen\/go\/v1/, '');
+    if (pathname.startsWith('/zen/v1')) return pathname.replace(/^\/zen\/v1/, '');
+    return pathname;
+  }
   if ((family === 'openai-chat' || family === 'openai-responses') && routes.stripOpenAIV1) return pathname.replace(/^\/v1(?=\/)/, '');
   return pathname;
 }
@@ -348,9 +380,12 @@ export { resolveUpstreams, parseGatewayHeaders };
 
 export function createProxy(config: ProxyConfig = {}) {
   const routes_raw = resolveUpstreams(config);
-  const upstreamBase = (family: ApiFamily): string => {
+  const upstreamBase = (family: ApiFamily, tier?: OpenCodeTier): string => {
     if (family === 'openai-chat' || family === 'openai-responses') return routes_raw.openai;
-    if (family === 'opencode-zen') return routes_raw.opencode ?? routes_raw.anthropic;
+    if (family === 'opencode') {
+      if (tier === 'go') return routes_raw.opencodeGo ?? routes_raw.opencode ?? routes_raw.anthropic;
+      return routes_raw.opencode ?? routes_raw.anthropic;
+    }
     return routes_raw.anthropic;
   };
   const gatewayHeaders = config.gatewayHeaders ?? {};
@@ -364,6 +399,7 @@ export function createProxy(config: ProxyConfig = {}) {
     const url = new URL(req.url);
     const family = pickFamily(req.method, url.pathname, req.headers, config);
     const isProviderPrefixed = isProviderPrefixedPath(url.pathname);
+    const opencodeTier = family === 'opencode' ? detectOpenCodeTier(url.pathname) : undefined;
 
     let reqBodyBytes: Uint8Array | undefined;
     let reqBodySha8: string | undefined;
@@ -377,7 +413,7 @@ export function createProxy(config: ProxyConfig = {}) {
         if (is4xx && reqBodyBytes && reqBodyBytes.byteLength > 0) {
           try { reqBodyGz = await gzipBytes(reqBodyBytes); } catch {}
         }
-        await config.onRequest?.({ method: req.method, path: url.pathname, model: requestModel, status, durationMs: Date.now() - t0, firstByteMs, info, usage, error, errorBody, reqBodySha8, reqBodyGz, measurement, stopReason });
+        await config.onRequest?.({ method: req.method, path: url.pathname, model: requestModel, tier: opencodeTier, status, durationMs: Date.now() - t0, firstByteMs, info, usage, error, errorBody, reqBodySha8, reqBodyGz, measurement, stopReason });
       };
       void finalize();
     };
@@ -397,13 +433,15 @@ export function createProxy(config: ProxyConfig = {}) {
     const transformer = getTransformer(family);
     if (transformer) {
       const transformOpts = typeof config.transform === 'function' ? config.transform() : config.transform;
-      const isGptFamily = family === 'openai-chat' || family === 'openai-responses' || family === 'opencode-zen';
-      const modelOk = isGptFamily && model ? isPxpipeSupportedGptModel(model) : true;
-      const imageCapable = isGptFamily && model ? isImageCapableModel(model) : true;
-      const effectiveOpts: import('./transform/types.js').TransformOptions = (isGptFamily && modelOk && imageCapable ? transformOpts : { ...transformOpts, compress: false }) ?? {};
+      const isOpenCodeMessages = family === 'opencode' && url.pathname.endsWith('/messages');
+      const isAnthropicFamily = family === 'anthropic' || isOpenCodeMessages;
+      const isGptFamily = family === 'openai-chat' || family === 'openai-responses' || (family === 'opencode' && !isOpenCodeMessages);
+      const modelOk = (isGptFamily || isAnthropicFamily) && model ? (isGptFamily ? isPxpipeSupportedGptModel(model) : isPxpipeSupportedModel(model)) : true;
+      const imageCapable = (isGptFamily || isAnthropicFamily) && model ? isImageCapableModel(model) : true;
+      const effectiveOpts: import('./transform/types.js').TransformOptions = ((isGptFamily || isAnthropicFamily) && modelOk && imageCapable ? transformOpts : { ...transformOpts, compress: false }) ?? {};
       try {
         const r = await transformer({ body: processedBodyIn, model: model ?? '', method: req.method, path: url.pathname, opts: effectiveOpts });
-        if (isGptFamily && !modelOk) r.info.reason = 'unsupported_model';
+        if ((isGptFamily || isAnthropicFamily) && !modelOk) r.info.reason = 'unsupported_model';
         info = r.info;
         reqBodyBytes = r.body;
         if (r.body.byteLength > 0) reqBodySha8 = await sha8Bytes(r.body);
@@ -418,13 +456,25 @@ export function createProxy(config: ProxyConfig = {}) {
     const outHeaders = filterHeaders(req.headers, STRIP_REQ_HEADERS);
     if (family === 'openai-chat' || family === 'openai-responses') {
       if (config.openAIApiKey) outHeaders.set('authorization', `Bearer ${config.openAIApiKey}`);
+    } else if (family === 'opencode') {
+      // OpenCode uses x-api-key header for authentication
+      // If the client sent an authorization header, convert it to x-api-key
+      const authHeader = outHeaders.get('authorization');
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        outHeaders.set('x-api-key', authHeader.slice(7));
+        outHeaders.delete('authorization');
+      }
+      // If config has an API key, use it (overrides client header)
+      if (config.apiKey) {
+        outHeaders.set('x-api-key', config.apiKey);
+      }
     } else if (config.apiKey && !isProviderPrefixed) {
       outHeaders.set('x-api-key', config.apiKey);
     }
     applyGatewayHeaders(outHeaders);
 
-    const outPath = resolveUpstreamPath(url.pathname + url.search, family, { stripOpenAIV1: routes_raw.stripOpenAIV1, isOpenCodeAIPath: url.pathname.startsWith('/zen/v1/') });
-    const upstreamUrl = upstreamBase(family) + outPath;
+    const outPath = resolveUpstreamPath(url.pathname + url.search, family, { stripOpenAIV1: routes_raw.stripOpenAIV1, isOpenCodeAIPath: isOpenCodePath(url.pathname) });
+    const upstreamUrl = upstreamBase(family, opencodeTier) + outPath;
 
     let upstreamRes: Response;
     try {

@@ -37,6 +37,7 @@ export function spawnOpenCode(argv: AgentArgv, port: number) {
       openai: { options: { baseURL: `http://127.0.0.1:${port}/v1` } },
       anthropic: { options: { baseURL: `http://127.0.0.1:${port}` } },
       opencode: { options: { baseURL: `http://127.0.0.1:${port}/zen/v1` } },
+      'opencode-go': { options: { baseURL: `http://127.0.0.1:${port}/zen/go/v1` } },
     },
   });
 

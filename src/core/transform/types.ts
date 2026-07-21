@@ -5,7 +5,7 @@ export type ApiFamily =
   | 'anthropic'
   | 'openai-chat'
   | 'openai-responses'
-  | 'opencode-zen';
+  | 'opencode';
 
 /** Options passed to each transformer (same as core utils TransformOptions). */
 export type TransformOptions = import('../utils.js').TransformOptions;

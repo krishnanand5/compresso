@@ -19,6 +19,7 @@ describe('resolveUpstreams', () => {
       anthropic: 'https://api.anthropic.com',
       openai: 'https://api.openai.com',
       opencode: 'https://opencode.ai/zen/v1',
+      opencodeGo: 'https://opencode.ai/zen/go/v1',
       stripOpenAIV1: false,
     });
   });
@@ -29,6 +30,7 @@ describe('resolveUpstreams', () => {
         anthropic: `${FAKE_BASE}/anthropic`,
         openai: `${FAKE_BASE}/openai`,
         opencode: 'https://opencode.ai/zen/v1',
+        opencodeGo: 'https://opencode.ai/zen/go/v1',
         stripOpenAIV1: true,
       });
   });

@@ -2,12 +2,14 @@ export interface UpstreamRoutes {
   anthropic: string;
   openai: string;
   opencode?: string;
+  opencodeGo?: string;
   stripOpenAIV1: boolean;
 }
 
 const DEFAULT_UPSTREAM = 'https://api.anthropic.com';
 const DEFAULT_OPENAI_UPSTREAM = 'https://api.openai.com';
 const DEFAULT_OPENCODE_UPSTREAM = 'https://opencode.ai/zen/v1';
+const DEFAULT_OPENCODE_GO_UPSTREAM = 'https://opencode.ai/zen/go/v1';
 
 export function resolveUpstreams(config: {
   provider?: 'cloudflare-ai-gateway';
@@ -15,6 +17,7 @@ export function resolveUpstreams(config: {
   upstream?: string;
   openAIUpstream?: string;
   opencodeUpstream?: string;
+  opencodeGoUpstream?: string;
 }): UpstreamRoutes {
   if (config.provider === 'cloudflare-ai-gateway') {
     const base = (config.gatewayBaseUrl ?? '').replace(/\/+$/, '');
@@ -23,6 +26,7 @@ export function resolveUpstreams(config: {
       anthropic: `${base}/anthropic`,
       openai: `${base}/openai`,
       opencode: (config.opencodeUpstream ?? DEFAULT_OPENCODE_UPSTREAM).replace(/\/+$/, ''),
+      opencodeGo: (config.opencodeGoUpstream ?? DEFAULT_OPENCODE_GO_UPSTREAM).replace(/\/+$/, ''),
       stripOpenAIV1: true,
     };
   }
@@ -30,6 +34,7 @@ export function resolveUpstreams(config: {
     anthropic: (config.upstream ?? DEFAULT_UPSTREAM).replace(/\/+$/, ''),
     openai: (config.openAIUpstream ?? DEFAULT_OPENAI_UPSTREAM).replace(/\/+$/, ''),
     opencode: (config.opencodeUpstream ?? DEFAULT_OPENCODE_UPSTREAM).replace(/\/+$/, ''),
+    opencodeGo: (config.opencodeGoUpstream ?? DEFAULT_OPENCODE_GO_UPSTREAM).replace(/\/+$/, ''),
     stripOpenAIV1: false,
   };
 }

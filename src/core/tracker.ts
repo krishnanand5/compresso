@@ -16,6 +16,8 @@ export interface TrackEvent {
   client?: string;
   /** Top-level request model when present. */
   model?: string;
+  /** OpenCode tier: 'zen' or 'go'. Only present for OpenCode requests. */
+  tier?: 'zen' | 'go';
   status: number;
   duration_ms: number;
   first_byte_ms?: number;
@@ -194,6 +196,7 @@ export function toTrackEvent(ev: ProxyEvent): TrackEvent {
   };
   if (ev.model) out.model = ev.model;
   if (ev.client) out.client = ev.client;
+  if (ev.tier) out.tier = ev.tier;
   if (ev.cwd) out.cwd = ev.cwd;
   if (ev.firstByteMs !== undefined) out.first_byte_ms = ev.firstByteMs;
   if (ev.error) out.error = ev.error;
