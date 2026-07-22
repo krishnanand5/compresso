@@ -52,6 +52,7 @@ export default {
       openAIUpstream: getEnv(env, 'OPENAI_UPSTREAM') ?? sharedUpstream ?? 'https://api.openai.com',
       opencodeUpstream: getEnv(env, 'COMPRESSO_OPENCODE_UPSTREAM') ?? sharedUpstream ?? 'https://opencode.ai/zen/v1',
       opencodeGoUpstream: getEnv(env, 'COMPRESSO_OPENCODE_GO_UPSTREAM') ?? sharedUpstream ?? 'https://opencode.ai/zen/go/v1',
+      cwd: undefined,
       apiKey: getEnv(env, 'ANTHROPIC_API_KEY'),
       openAIApiKey: getEnv(env, 'OPENAI_API_KEY'),
       transform: () => {

@@ -111,7 +111,7 @@ function parseCli(argv: string[]): RuntimeConfig {
     openAIUpstream: process.env.OPENAI_UPSTREAM ?? sharedUpstream ?? 'https://api.openai.com',
     opencodeUpstream: process.env.COMPRESSO_OPENCODE_UPSTREAM ?? sharedUpstream ?? 'https://opencode.ai/zen/v1',
     opencodeGoUpstream: process.env.COMPRESSO_OPENCODE_GO_UPSTREAM ?? sharedUpstream ?? 'https://opencode.ai/zen/go/v1',
-    apiKey: process.env.ANTHROPIC_API_KEY,
+    apiKey: process.env.ANTHROPIC_API_KEY || process.env.COMPRESSO_OPENCODE_API_KEY,
     openAIApiKey: process.env.OPENAI_API_KEY,
     provider: parseProvider(process.env.COMPRESSO_PROVIDER),
     gatewayBaseUrl: process.env.COMPRESSO_GATEWAY_BASE_URL,
@@ -830,6 +830,8 @@ async function main(): Promise<void> {
     openAIUpstream: opts.openAIUpstream,
     opencodeUpstream: opts.opencodeUpstream,
     opencodeGoUpstream: opts.opencodeGoUpstream,
+    cwd: process.env.COMPRESSO_CWD,
+    dumpBodiesDir: process.env.COMPRESSO_DUMP_BODIES || undefined,
     apiKey: opts.apiKey,
     openAIApiKey: opts.openAIApiKey,
     transform: () => {

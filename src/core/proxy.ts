@@ -5,6 +5,13 @@ import { getTransformer } from './transform/registry.js';
 import './transform/register-all.js';
 import { recordImageCostObservation } from './image-cost-cache.js';
 
+function newRequestId(): string {
+  try {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  } catch {}
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export interface ProxyConfig {
   provider?: 'cloudflare-ai-gateway';
   gatewayBaseUrl?: string;
@@ -15,6 +22,8 @@ export interface ProxyConfig {
   openAIApiKey?: string;
   opencodeUpstream?: string;
   opencodeGoUpstream?: string;
+  cwd?: string;
+  dumpBodiesDir?: string;
   transform?: TransformOptions | (() => TransformOptions);
   onRequest?: (event: ProxyEvent) => void | Promise<void>;
   onBeforeTransform?: (body: Uint8Array, env: { cwd?: string }) => Uint8Array | Promise<Uint8Array>;
@@ -22,6 +31,7 @@ export interface ProxyConfig {
 }
 
 export interface ProxyEvent {
+  requestId: string;
   method: string;
   path: string;
   model?: string;
@@ -407,6 +417,7 @@ export function createProxy(config: ProxyConfig = {}) {
 
   return async function handle(req: Request): Promise<Response> {
     const t0 = Date.now();
+    const requestId = newRequestId();
     const url = new URL(req.url);
     const family = pickFamily(req.method, url.pathname, req.headers, config);
     const isProviderPrefixed = isProviderPrefixedPath(url.pathname);
@@ -425,7 +436,7 @@ export function createProxy(config: ProxyConfig = {}) {
         if (isError && reqBodyBytes && reqBodyBytes.byteLength > 0) {
           try { reqBodyGz = await gzipBytes(reqBodyBytes); } catch {}
         }
-        await config.onRequest?.({ method: req.method, path: url.pathname, model: requestModel, tier: opencodeTier, status, durationMs: Date.now() - t0, firstByteMs, info, usage, error, errorBody, reqBodySha8, reqBodyGz, measurement, stopReason });
+        await config.onRequest?.({ requestId, method: req.method, path: url.pathname, model: requestModel, tier: opencodeTier, status, durationMs: Date.now() - t0, firstByteMs, info, usage, error, errorBody, reqBodySha8, reqBodyGz, measurement, stopReason });
         if (isError) {
           try {
             let reqBodyJson: string | undefined;
@@ -446,7 +457,7 @@ export function createProxy(config: ProxyConfig = {}) {
     let processedBodyIn: Uint8Array = bodyIn;
     if (config.onBeforeTransform) {
       try {
-        const cwd = process.env.COMPRESSO_CWD;
+        const cwd = config.cwd;
         processedBodyIn = await config.onBeforeTransform(bodyIn, { cwd }) as Uint8Array;
       } catch {}
     }
@@ -478,16 +489,19 @@ export function createProxy(config: ProxyConfig = {}) {
     if (family === 'openai-chat' || family === 'openai-responses') {
       if (config.openAIApiKey) outHeaders.set('authorization', `Bearer ${config.openAIApiKey}`);
     } else if (family === 'opencode') {
-      // OpenCode uses x-api-key header for authentication
-      // If the client sent an authorization header, convert it to x-api-key
+      // OpenCode endpoints use different auth formats:
+      // /messages (Anthropic) → x-api-key
+      // /chat/completions & /responses (OpenAI-compatible) → Authorization: Bearer
+      // Send both so the gateway picks whichever it needs.
       const authHeader = outHeaders.get('authorization');
-      if (authHeader && authHeader.startsWith('Bearer ')) {
-        outHeaders.set('x-api-key', authHeader.slice(7));
-        outHeaders.delete('authorization');
+      const clientKey = (authHeader && authHeader.startsWith('Bearer ')) ? authHeader.slice(7) : null;
+      const effectiveKey = config.apiKey || clientKey;
+      if (effectiveKey) {
+        outHeaders.set('x-api-key', effectiveKey);
+        outHeaders.set('authorization', `Bearer ${effectiveKey}`);
       }
-      // If config has an API key, use it (overrides client header)
-      if (config.apiKey) {
-        outHeaders.set('x-api-key', config.apiKey);
+      if (!effectiveKey) {
+        console.error(`[compresso] WARNING: no API key for opencode request — set COMPRESSO_OPENCODE_API_KEY`);
       }
     } else if (config.apiKey && !isProviderPrefixed) {
       outHeaders.set('x-api-key', config.apiKey);
@@ -509,10 +523,10 @@ export function createProxy(config: ProxyConfig = {}) {
     const { response: teed, usagePromise, errorBodyPromise, measurementPromise, stopReasonPromise, responseJsonPromise } = teeForUsage(upstreamRes);
 
     void Promise.all([usagePromise.catch(() => undefined), errorBodyPromise.catch(() => undefined), measurementPromise.catch(() => undefined), stopReasonPromise.catch(() => undefined), responseJsonPromise.catch(() => undefined)])
-      .then(([usage, errorBody, measurement, stopReason, responseJson]) => {
+      .then(async ([usage, errorBody, measurement, stopReason, responseJson]) => {
         if (config.onAfterResponse && responseJson) {
           try {
-            const cwd = process.env.COMPRESSO_CWD;
+            const cwd = config.cwd;
             void config.onAfterResponse(responseJson, { cwd });
           } catch {}
         }
@@ -528,6 +542,29 @@ export function createProxy(config: ProxyConfig = {}) {
           if (actualInput > 0 && baselineTokens > 0 && cacheRead === 0 && slabFraction > 0.3) {
             recordImageCostObservation(requestModel ?? 'unknown', baselineTokens, actualInput);
           }
+        }
+        // Dump request/response bodies for debugging when enabled
+        if (config.dumpBodiesDir && reqBodyBytes && reqBodyBytes.byteLength > 0) {
+          try {
+            const { default: fs } = await import('node:fs');
+            const { default: path } = await import('node:path');
+            const dir = path.join(config.dumpBodiesDir, 'bodies');
+            await fs.promises.mkdir(dir, { recursive: true });
+            const dumpFile = path.join(dir, `${requestId}.json`);
+            let reqBodyText = '';
+            try { reqBodyText = new TextDecoder().decode(reqBodyBytes); } catch {}
+            const responseBody = errorBody ?? (responseJson ? JSON.stringify(responseJson) : '');
+            const dump = {
+              requestId,
+              method: req.method,
+              path: url.pathname,
+              model: requestModel,
+              status: upstreamRes.status,
+              requestBody: reqBodyText.slice(0, 500_000),
+              responseBody: responseBody.slice(0, 500_000),
+            };
+            await fs.promises.writeFile(dumpFile, JSON.stringify(dump, null, 2), 'utf8');
+          } catch {}
         }
         fire(upstreamRes.status, undefined, firstByteMs, usage, errorBody, measurement, stopReason);
       });

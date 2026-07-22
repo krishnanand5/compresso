@@ -10,6 +10,8 @@ import { bytesToBase64 } from './png.js';
 /** Flat record persisted per request. Adding a field is non-breaking for readers. */
 export interface TrackEvent {
   ts: string;
+  /** Unique per-request UUID for correlation. */
+  request_id?: string;
   method: string;
   path: string;
   /** Client identifier: 'codex', 'opencode', 'copilot', 'claude', or 'unknown'. */
@@ -189,6 +191,7 @@ export function toTrackEvent(ev: ProxyEvent): TrackEvent {
   const u = ev.usage;
   const out: TrackEvent = {
     ts: new Date().toISOString(),
+    request_id: ev.requestId,
     method: ev.method,
     path: ev.path,
     status: ev.status,
