@@ -14,12 +14,23 @@ export * from './types.js';
 
 let singleton: ContextManager | null = null;
 
+export function createContextManager(dbDir?: string): ContextManager {
+  const config = loadConfig();
+  return new ContextManager(dbDir ?? DEFAULT_CONFIG_DIR, config);
+}
+
 export function getContextManager(): ContextManager {
   if (!singleton) {
-    const config = loadConfig();
-    singleton = new ContextManager(DEFAULT_CONFIG_DIR, config);
+    singleton = createContextManager();
   }
   return singleton;
+}
+
+export function setContextManager(cm: ContextManager | null): void {
+  if (singleton && singleton !== cm) {
+    singleton.close();
+  }
+  singleton = cm;
 }
 
 export function resetContextManager(): void {

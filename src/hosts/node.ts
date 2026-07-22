@@ -32,7 +32,7 @@ import {
   dashboardPath,
   type DashboardRoute,
 } from '../dashboard.js';
-import { getContextManager, captureTaskState, injectContextPacket, extractArtifactsFromResponse } from '../context-manager/index.js';
+import { getContextManager, resetContextManager, captureTaskState, injectContextPacket, extractArtifactsFromResponse } from '../context-manager/index.js';
 
 /** Runtime config. The core transform tuning comes from DEFAULTS in
  *  transform.ts; startup knobs cover deployment plus emergency GPT scope
@@ -968,6 +968,7 @@ async function main(): Promise<void> {
     if (shuttingDown) { console.log(`[compresso] ${sig} again — forcing exit`); process.exit(130); }
     shuttingDown = true;
     console.log(`[compresso] ${sig} — shutting down`);
+    resetContextManager();
     if (tracker instanceof FileTracker) tracker.close();
     server.close(() => process.exit(0));
     server.closeIdleConnections?.();

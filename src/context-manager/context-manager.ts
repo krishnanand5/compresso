@@ -16,6 +16,7 @@ import type {
 import type Database from 'better-sqlite3';
 
 export class ContextManager {
+  private _closed = false;
   private db: Database.Database;
   private store: ArtifactStore;
   private cache: HotCache;
@@ -36,7 +37,12 @@ export class ContextManager {
     this.invalidator = new Invalidator(this.db, this.cache);
   }
 
+  get isClosed(): boolean {
+    return this._closed;
+  }
+
   getContext(taskState: TaskState, options: ContextManagerOptions): ContextPacket {
+    if (this._closed) return { items: [], totalTokens: 0, retrievalTimeMs: 0, cacheHits: 0, staleItemsInvalidated: 0 };
     const start = performance.now();
 
     if (this.config.enableInvalidation) {
@@ -72,6 +78,7 @@ export class ContextManager {
   }
 
   recordArtifact(input: ArtifactInput) {
+    if (this._closed) return;
     return this.store.createArtifact(input);
   }
 
@@ -79,10 +86,14 @@ export class ContextManager {
   }
 
   invalidate(scopeOrPath: string) {
+    if (this._closed) return;
     this.invalidator.invalidateByFilePath(scopeOrPath, '');
   }
 
   close() {
+    if (this._closed) return;
+    this._closed = true;
+    this.store.close();
     this.db.close();
   }
 }
