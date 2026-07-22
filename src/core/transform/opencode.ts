@@ -3,9 +3,9 @@ import { registerTransformer } from './registry.js';
 import { transformOpenAIChatCompletions, transformOpenAIResponses } from '../openai.js';
 import { transformAnthropicMessages } from './anthropic.js';
 
-const opencodeTransformer: Transformer = async ({ body, opts, path }) => {
+const opencodeTransformer: Transformer = async ({ body, opts, path, model, upstreamUrl, apiKey }) => {
   if (path.endsWith('/messages')) {
-    return transformAnthropicMessages(body, opts);
+    return transformAnthropicMessages({ body, model, opts, upstreamUrl, apiKey });
   }
   const isResponses = path.includes('/responses');
   const r = isResponses

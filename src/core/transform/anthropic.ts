@@ -7,6 +7,7 @@ import { compactSlabWhitespace, sha8 } from '../utils.js';
 import { resolveGptProfile } from '../gpt-model-profiles.js';
 import { evalOpenAIGate } from '../openai.js';
 import { getModelCostMultiplier } from '../image-cost-cache.js';
+import { countTokens } from '../count-tokens.js';
 
 interface AnthropicMessage {
   role: 'user' | 'assistant';
@@ -78,10 +79,14 @@ Read the images carefully — they contain verbatim tool definitions, system ins
 
 const ANTHROPIC_POINTER = 'The full instructions for this message were rendered into image(s) attached to the first user message by compresso. Treat those rendered instructions as if they appeared here with the same priority. Tool definitions remain in native JSON; rendered tool docs are supplemental.';
 
-export async function transformAnthropicMessages(
-  body: Uint8Array,
-  opts: TransformOptions = {},
-): Promise<{ body: Uint8Array; info: TransformInfo }> {
+export async function transformAnthropicMessages(input: {
+  body: Uint8Array;
+  model: string;
+  opts: TransformOptions;
+  upstreamUrl?: string;
+  apiKey?: string;
+}): Promise<{ body: Uint8Array; info: TransformInfo }> {
+  const { body, model, opts, upstreamUrl, apiKey } = input;
   const o = {
     compress: opts.compress ?? true,
     compressTools: opts.compressTools ?? true,
@@ -107,6 +112,26 @@ export async function transformAnthropicMessages(
   if (!Array.isArray(req.messages)) {
     info.reason = 'parse_error: messages must be an array';
     return { body, info };
+  }
+
+  // Get exact token count from upstream if available
+  let exactTokenCount: number | undefined;
+  if (upstreamUrl && apiKey) {
+    // Strip the /messages or /chat/completions path to get the base URL
+    const baseMatch = upstreamUrl.match(/^(https?:\/\/[^/]+(?:\/zen\/go)?\/v1)/);
+    if (baseMatch) {
+      const countReq = {
+        model,
+        system: req.system,
+        messages: req.messages,
+        tools: req.tools,
+      };
+      const key: string = apiKey ?? '';
+      exactTokenCount = await countTokens(baseMatch[1] as string, key as string, countReq);
+      if (exactTokenCount !== undefined) {
+        info.baselineProbeStatus = 'ok';
+      }
+    }
   }
 
   const firstUserIdx = req.messages.findIndex((m) => m.role === 'user');
@@ -162,7 +187,7 @@ export async function transformAnthropicMessages(
     return { body, info };
   }
 
-  const profile = resolveGptProfile(req.model);
+  const profile = resolveGptProfile(model);
   const maxCols = o.cols ?? profile.stripCols;
   const reflowNote = o.reflow
     ? ' The glyph ↵ (U+21B5) marks an original hard line break in content; treat it as a real newline.'
@@ -175,13 +200,13 @@ export async function transformAnthropicMessages(
     profile.stripCols,
   );
 
-  const gate = evalOpenAIGate(req.model, renderedText, cols, 3);
+  const gate = evalOpenAIGate(model, renderedText, cols, 3);
   // learnedMultiplier = actualInput / baselineTokens observed from prior compressions.
   // ratio > 1.0 means imaging cost MORE than text → scale UP image estimate → gate more conservative.
   // ratio < 1.0 would mean cheaper → clamped to 1.0 by MIN_MULTIPLIER floor (never more permissive).
   // Bucket by estimated slab size so small/large slabs learn independently.
   const roughBaseline = Math.ceil(combined.length / 3);
-  const learnedMultiplier = getModelCostMultiplier(req.model, roughBaseline);
+  const learnedMultiplier = getModelCostMultiplier(model, roughBaseline);
   const adjustedImageTokens = gate.imageTokens * learnedMultiplier;
   info.gateEval = {
     site: 'slab',
@@ -193,7 +218,7 @@ export async function transformAnthropicMessages(
   };
   info.costMultiplier = learnedMultiplier;
   if (adjustedImageTokens >= gate.textTokens) {
-    info.reason = `not_profitable (slab=${combined.length} chars, multiplier=${learnedMultiplier.toFixed(2)})`;
+    info.reason = `not_profitable (slab=${combined.length} chars, adjustedImageTokens=${Math.round(adjustedImageTokens)} > textTokens=${gate.textTokens}, multiplier=${learnedMultiplier.toFixed(2)})`;
     info.passthroughReasons = { not_profitable: 1 };
     return { body, info };
   }
@@ -208,9 +233,8 @@ export async function transformAnthropicMessages(
   info.imageCount = images.length;
   info.imageBytes = images.reduce((sum, img) => sum + img.png.length, 0);
   info.compressedChars = combined.length;
-  info.baselineTokens = Math.ceil(combined.length / 3);
-  info.baselineCacheableTokens = Math.ceil(combined.length / 3);
-  info.baselineProbeStatus = 'ok';
+  info.baselineTokens = exactTokenCount ?? Math.ceil(combined.length / 3);
+  info.baselineCacheableTokens = exactTokenCount ?? Math.ceil(combined.length / 3);
 
   const imageParts = images.map(anthropicImagePart);
 

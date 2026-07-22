@@ -461,7 +461,7 @@ export function createProxy(config: ProxyConfig = {}) {
       const imageCapable = (isGptFamily || isAnthropicFamily) && model ? isImageCapableModel(model) : true;
       const effectiveOpts: import('./transform/types.js').TransformOptions = ((isGptFamily || isAnthropicFamily) && modelOk && imageCapable ? transformOpts : { ...transformOpts, compress: false }) ?? {};
       try {
-        const r = await transformer({ body: processedBodyIn, model: model ?? '', method: req.method, path: url.pathname, opts: effectiveOpts });
+        const r = await transformer({ body: processedBodyIn, model: model ?? '', method: req.method, path: url.pathname, opts: effectiveOpts, upstreamUrl, apiKey: config.apiKey });
         if ((isGptFamily || isAnthropicFamily) && !modelOk) r.info.reason = 'unsupported_model';
         info = r.info;
         reqBodyBytes = r.body;

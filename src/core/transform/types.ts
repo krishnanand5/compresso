@@ -21,6 +21,8 @@ export interface TransformRequest {
   readonly method: string;
   readonly path: string;
   readonly opts: TransformOptions;
+  readonly upstreamUrl?: string;
+  readonly apiKey?: string;
 }
 
 /** Result returned from a transformer. */

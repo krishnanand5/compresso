@@ -296,3 +296,11 @@ export async function sha8(text: string): Promise<string> {
   for (let i = 0; i < 4; i++) hex += bytes[i]!.toString(16).padStart(2, '0');
   return hex;
 }
+
+export function sha256(text: string): string {
+  let hash = 5381;
+  for (let i = 0; i < text.length; i++) {
+    hash = ((hash << 5) + hash + text.charCodeAt(i)) | 0;
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
+}
