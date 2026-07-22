@@ -15,7 +15,7 @@ import { getAllowedModelBases, setAllowedModelBases } from '../src/core/applicab
 import type { SessionsPaths } from '../src/sessions.js';
 import type { TrackEvent } from '../src/core/tracker.js';
 import type { StatsPayload, RecentPayload } from '../src/dashboard/types.js';
-import { renderPage } from '../src/dashboard/fragments.js';
+import { renderPage } from '../src/dashboard/render/fragments.js';
 
 function makeTmp(): SessionsPaths {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pxpipe-dashapi-'));

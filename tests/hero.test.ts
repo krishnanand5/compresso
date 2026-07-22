@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { renderSessionSummaryFragment } from '../src/dashboard/fragments.js';
+import { renderSessionSummaryFragment } from '../src/dashboard/render/fragments.js';
 import type { StatsPayload } from '../src/dashboard/types.js';
 
 /**

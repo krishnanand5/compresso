@@ -15,7 +15,7 @@ import {
   renderContextMapFragment,
   renderRecentFragment,
   type ContextMapData,
-} from '../src/dashboard/fragments.js';
+} from '../src/dashboard/render/fragments.js';
 import type { RecentPayload } from '../src/dashboard/types.js';
 
 function ctx(p: Partial<ContextMapData> = {}): ContextMapData {
