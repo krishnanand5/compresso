@@ -73,7 +73,6 @@ export const IMAGE_CAPABLE_BASES = new Set([
   'gpt-5.6',
   'big-pickle',
   'grok-4.5',
-  'deepseek-v4-pro',
   'deepseek-v4-flash',
   'glm-5.2',
   'glm-5.1',

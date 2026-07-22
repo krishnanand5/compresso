@@ -175,12 +175,17 @@ export async function transformAnthropicMessages(
     profile.stripCols,
   );
 
-  const gate = evalOpenAIGate(req.model, renderedText, cols, 4);
-  const learnedMultiplier = getModelCostMultiplier(req.model);
+  const gate = evalOpenAIGate(req.model, renderedText, cols, 3);
+  // learnedMultiplier = actualInput / baselineTokens observed from prior compressions.
+  // ratio > 1.0 means imaging cost MORE than text → scale UP image estimate → gate more conservative.
+  // ratio < 1.0 would mean cheaper → clamped to 1.0 by MIN_MULTIPLIER floor (never more permissive).
+  // Bucket by estimated slab size so small/large slabs learn independently.
+  const roughBaseline = Math.ceil(combined.length / 3);
+  const learnedMultiplier = getModelCostMultiplier(req.model, roughBaseline);
   const adjustedImageTokens = gate.imageTokens * learnedMultiplier;
   info.gateEval = {
     site: 'slab',
-    imageTokens: gate.imageTokens,
+    imageTokens: adjustedImageTokens,
     textTokens: gate.textTokens,
     burnImageSide: 0,
     burnTextSide: 0,
@@ -188,7 +193,7 @@ export async function transformAnthropicMessages(
   };
   info.costMultiplier = learnedMultiplier;
   if (adjustedImageTokens >= gate.textTokens) {
-    info.reason = `not_profitable (slab=${combined.length} chars, adjustedImageTokens=${Math.round(adjustedImageTokens)} > textTokens=${gate.textTokens}, multiplier=${learnedMultiplier.toFixed(2)})`;
+    info.reason = `not_profitable (slab=${combined.length} chars, multiplier=${learnedMultiplier.toFixed(2)})`;
     info.passthroughReasons = { not_profitable: 1 };
     return { body, info };
   }
@@ -203,8 +208,8 @@ export async function transformAnthropicMessages(
   info.imageCount = images.length;
   info.imageBytes = images.reduce((sum, img) => sum + img.png.length, 0);
   info.compressedChars = combined.length;
-  info.baselineTokens = Math.ceil(combined.length / 4);
-  info.baselineCacheableTokens = Math.ceil(combined.length / 4);
+  info.baselineTokens = Math.ceil(combined.length / 3);
+  info.baselineCacheableTokens = Math.ceil(combined.length / 3);
   info.baselineProbeStatus = 'ok';
 
   const imageParts = images.map(anthropicImagePart);

@@ -16,7 +16,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 
 export interface ModelCostEntry {
-  /** Smoothed multiplier: actual_image_tokens / estimated_image_tokens. */
+  /** Smoothed multiplier: actual_input / baseline_tokens. >1 means compression lost money. */
   multiplier: number;
   /** Number of observations folded into the multiplier. */
   n: number;
@@ -27,8 +27,23 @@ export interface ModelCostEntry {
 type ModelCostCacheMap = Record<string, ModelCostEntry>;
 
 const CACHE_FILE = path.join(os.homedir(), '.compresso', 'image-cost-cache.json');
-const SMOOTHING_FACTOR = 0.3; // weight of new observation vs existing (0 = ignore new)
+const SMOOTHING_FACTOR = 0.15; // low = noise-resistant, slow convergence
 const DEFAULT_MULTIPLIER = 1.0;
+const MIN_MULTIPLIER = 1.0; // floor: gate only gets MORE conservative with learning
+const MAX_MULTIPLIER = 10.0; // cap: images cost at most 10x estimate
+/** Minimum observations before the learned multiplier is trusted (falls back to 1.0). */
+const MIN_OBSERVATIONS = 3;
+
+/** Bucket baselineTokens into size ranges for per-model-size multiplier keys. */
+function sizeBucket(baselineTokens: number): string {
+  if (baselineTokens < 5000) return 's';  // small slab (high overhead)
+  if (baselineTokens < 20000) return 'm'; // medium
+  return 'l';                              // large (efficient)
+}
+
+function modelKey(model: string, baselineTokens: number): string {
+  return `${model}:${sizeBucket(baselineTokens)}`;
+}
 
 let cache: ModelCostCacheMap | null = null;
 
@@ -52,32 +67,41 @@ function saveCache(): void {
   } catch {}
 }
 
-/** Get the learned multiplier for a model. Returns DEFAULT_MULTIPLIER if unknown. */
-export function getModelCostMultiplier(model: string): number {
+/** Get the learned multiplier for a (model, slabSize) bucket.
+ *  Returns DEFAULT_MULTIPLIER if unknown OR fewer than MIN_OBSERVATIONS. */
+export function getModelCostMultiplier(model: string, baselineTokens: number): number {
   const c = loadCache();
-  const entry = c[model];
-  return entry?.multiplier ?? DEFAULT_MULTIPLIER;
+  const key = modelKey(model, baselineTokens);
+  const entry = c[key];
+  if (!entry || entry.n < MIN_OBSERVATIONS) return DEFAULT_MULTIPLIER;
+  return entry.multiplier;
 }
 
-/** Record an observation: estimated image tokens vs actual image tokens.
- *  Updates the smoothed multiplier for the model. */
+/** Clamp multiplier to reasonable bounds. */
+function clampMultiplier(m: number): number {
+  return Math.max(MIN_MULTIPLIER, Math.min(MAX_MULTIPLIER, m));
+}
+
+/** Record an observation: baselineTokens (what text would cost) vs actualInput (what we paid).
+ *  Updates the smoothed multiplier for the (model, sizeBucket) key. */
 export function recordImageCostObservation(
   model: string,
-  estimatedImageTokens: number,
-  actualImageTokens: number,
+  baselineTokens: number,
+  actualInput: number,
 ): void {
-  if (estimatedImageTokens <= 0 || actualImageTokens <= 0) return;
+  if (baselineTokens <= 0 || actualInput <= 0) return;
   const c = loadCache();
-  const ratio = actualImageTokens / estimatedImageTokens;
-  const existing = c[model];
+  const key = modelKey(model, baselineTokens);
+  const ratio = actualInput / baselineTokens;
+  const existing = c[key];
   if (existing) {
-    // Exponential moving average
-    existing.multiplier = existing.multiplier * (1 - SMOOTHING_FACTOR) + ratio * SMOOTHING_FACTOR;
+    const raw = existing.multiplier * (1 - SMOOTHING_FACTOR) + ratio * SMOOTHING_FACTOR;
+    existing.multiplier = clampMultiplier(raw);
     existing.n += 1;
     existing.lastTs = Date.now();
   } else {
-    c[model] = {
-      multiplier: ratio,
+    c[key] = {
+      multiplier: clampMultiplier(ratio),
       n: 1,
       lastTs: Date.now(),
     };

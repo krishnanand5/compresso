@@ -45,6 +45,7 @@ import {
 import { HISTORY_SYNTHETIC_INTRO, HISTORY_SYNTHETIC_OUTRO } from './utils.js';
 import { factSheetText } from './factsheet.js';
 import { countTokens as o200kCountTokens } from 'gpt-tokenizer/encoding/o200k_base';
+import { getModelCostMultiplier } from './image-cost-cache.js';
 
 // Per-model GPT rendering + vision-cost profiles (portrait-strip width, image-token
 // cost model, max image height) live in ./gpt-model-profiles.ts so a new model is a
@@ -737,6 +738,7 @@ function foldGptHistory(
   info.imageTokens = (info.imageTokens ?? 0) + gptImageTokens(model, allImages);
   // o200k token value of the collapsed transcript (what it cost as plain text).
   info.baselineImagedTokens = (info.baselineImagedTokens ?? 0) + gptTextTokens(plan.text);
+  info.baselineTokens = info.baselineImagedTokens;
   info.imageCount = (info.imageCount ?? 0) + allImages.length;
   for (const img of allImages) {
     info.imageBytes = (info.imageBytes ?? 0) + img.png.length;
@@ -852,16 +854,20 @@ export async function transformOpenAIChatCompletions(
   );
 
   const gate = evalOpenAIGate(req.model, renderedText, cols, o.charsPerToken);
+  const roughBaseline = Math.ceil(combined.length / o.charsPerToken);
+  const learnedMultiplier = getModelCostMultiplier(req.model, roughBaseline);
+  const adjustedImageTokens = gate.imageTokens * learnedMultiplier;
   info.gateEval = {
     site: 'slab',
-    imageTokens: gate.imageTokens,
+    imageTokens: adjustedImageTokens,
     textTokens: gate.textTokens,
     burnImageSide: 0,
     burnTextSide: 0,
-    profitable: gate.profitable,
+    profitable: adjustedImageTokens < gate.textTokens,
   };
-  if (!gate.profitable) {
-    info.reason = `not_profitable (slab=${combined.length} chars)`;
+  info.costMultiplier = learnedMultiplier;
+  if (adjustedImageTokens >= gate.textTokens) {
+    info.reason = `not_profitable (slab=${combined.length} chars, multiplier=${learnedMultiplier.toFixed(2)})`;
     info.passthroughReasons = { not_profitable: 1 };
     return { body, info };
   }
@@ -883,6 +889,7 @@ export async function transformOpenAIChatCompletions(
   // (reassigned to the stripped set below). See src/core/openai-savings.ts.
   info.imageTokens = gptImageTokens(req.model, images);
   info.baselineImagedTokens = gptBaselineImagedTokens(systemTexts, req.tools, rewrittenTools);
+  info.baselineTokens = info.baselineImagedTokens;
   info.compressedChars = combinedRaw.length;
   info.bucketChars = { static_slab: combinedRaw.length };
   info.systemSha8 = await sha8(combined);
@@ -1072,16 +1079,20 @@ export async function transformOpenAIResponses(
   );
 
   const gate = evalOpenAIGate(req.model, renderedText, cols, o.charsPerToken);
+  const roughBaseline = Math.ceil(combined.length / o.charsPerToken);
+  const learnedMultiplier = getModelCostMultiplier(req.model, roughBaseline);
+  const adjustedImageTokens = gate.imageTokens * learnedMultiplier;
   info.gateEval = {
     site: 'slab',
-    imageTokens: gate.imageTokens,
+    imageTokens: adjustedImageTokens,
     textTokens: gate.textTokens,
     burnImageSide: 0,
     burnTextSide: 0,
-    profitable: gate.profitable,
+    profitable: adjustedImageTokens < gate.textTokens,
   };
-  if (!gate.profitable) {
-    info.reason = `not_profitable (slab=${combined.length} chars)`;
+  info.costMultiplier = learnedMultiplier;
+  if (adjustedImageTokens >= gate.textTokens) {
+    info.reason = `not_profitable (slab=${combined.length} chars, multiplier=${learnedMultiplier.toFixed(2)})`;
     info.passthroughReasons = { not_profitable: 1 };
     return { body, info };
   }
@@ -1101,6 +1112,7 @@ export async function transformOpenAIResponses(
   // original here — reassigned to the stripped set below.
   info.imageTokens = gptImageTokens(req.model, images);
   info.baselineImagedTokens = gptBaselineImagedTokens(systemTexts, req.tools, rewrittenTools);
+  info.baselineTokens = info.baselineImagedTokens;
   info.compressedChars = combinedRaw.length;
   info.bucketChars = { static_slab: combinedRaw.length };
   info.systemSha8 = await sha8(combined);

@@ -516,15 +516,17 @@ export function createProxy(config: ProxyConfig = {}) {
             void config.onAfterResponse(responseJson, { cwd });
           } catch {}
         }
-        // Learn image cost: compare actual input tokens to baseline estimate
+        // Learn image cost: only from cold-miss, shallow-conversation compressions.
+        // Cold miss avoids cache-warmth distortion (cached reads bill at 0.1x).
+        // Slab fraction >30% ensures we're learning from early turns, not deep
+        // conversations where history dominates actualInput.
         if (upstreamRes.status >= 200 && upstreamRes.status < 300 && usage && info?.compressed && info?.baselineTokens && info?.gateEval) {
           const actualInput = usage.input_tokens ?? 0;
-          const estimatedText = info.baselineTokens;
-          if (actualInput > 0 && estimatedText > 0) {
-            // Rough ratio: actual cost / estimated text cost
-            // This overestimates image cost (includes non-imaged text tokens)
-            // but provides a useful upper bound for the gate
-            recordImageCostObservation(requestModel ?? 'unknown', info.gateEval.imageTokens, actualInput);
+          const cacheRead = usage.cache_read_input_tokens ?? 0;
+          const baselineTokens = info.baselineTokens;
+          const slabFraction = baselineTokens / Math.max(1, actualInput);
+          if (actualInput > 0 && baselineTokens > 0 && cacheRead === 0 && slabFraction > 0.3) {
+            recordImageCostObservation(requestModel ?? 'unknown', baselineTokens, actualInput);
           }
         }
         fire(upstreamRes.status, undefined, firstByteMs, usage, errorBody, measurement, stopReason);
