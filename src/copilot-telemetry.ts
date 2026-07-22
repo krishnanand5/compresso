@@ -13,13 +13,25 @@ export interface CopilotEvent {
   duration_ms: number;
   status: number;
   compressed: boolean;
-  orig_tokens: number;
-  image_tokens: number;
-  token_savings_pct: number;
-  orig_chars: number;
-  image_count: number;
-  wire_bytes_in: number;
-  wire_bytes_out: number;
+  compressed_chars?: number;
+  image_bytes?: number;
+  image_count?: number;
+  orig_chars?: number;
+  orig_tokens?: number;
+  image_tokens?: number;
+  token_savings_pct?: number;
+  wire_bytes_in?: number;
+  wire_bytes_out?: number;
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_create_tokens?: number;
+  cache_read_tokens?: number;
+  cached_tokens?: number;
+  error?: string;
+}
+
+export interface CopilotTelemetry {
+  emit(ev: CopilotEvent): void;
 }
 
 export interface CopilotAggregate {
@@ -51,10 +63,10 @@ export function newCopilotAggregate(): CopilotAggregate {
 export function foldCopilotAggregate(a: CopilotAggregate, ev: CopilotEvent): CopilotAggregate {
   a.totalTurns++;
   if (ev.compressed) a.compressedTurns++;
-  a.origTokensTotal += ev.orig_tokens;
-  a.imageTokensTotal += ev.image_tokens;
-  a.origCharsTotal += ev.orig_chars;
-  a.imageCountTotal += ev.image_count;
+  a.origTokensTotal += ev.orig_tokens ?? 0;
+  a.imageTokensTotal += ev.image_tokens ?? 0;
+  a.origCharsTotal += ev.orig_chars ?? 0;
+  a.imageCountTotal += ev.image_count ?? 0;
   if (a.origTokensTotal > 0) {
     a.tokenSavingsPct = Math.round((1 - a.imageTokensTotal / a.origTokensTotal) * 100);
   }

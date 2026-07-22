@@ -1539,8 +1539,8 @@ export class DashboardState {
         };
         s.events++;
         s.lastSeen = ev.ts;
-        s.origTokens += ev.orig_tokens;
-        s.imageTokens += ev.image_tokens;
+        s.origTokens += ev.orig_tokens ?? 0;
+        s.imageTokens += ev.image_tokens ?? 0;
         sessions.set(ev.session_id, s);
       } catch { /* skip bad lines */ }
     }

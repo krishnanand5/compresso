@@ -1,41 +1,18 @@
 import { CopilotRequestHandler, CopilotWebSocketForwarder } from '@github/copilot-sdk';
 import type { CopilotRequestContext } from '@github/copilot-sdk';
-import { transformOpenAIChatCompletions, transformOpenAIResponses } from '../../core/openai.js';
 import type { TransformOptions, TransformInfo } from '../../core/utils.js';
 import { REPORT_CHARS_PER_TOKEN } from '../../core/utils.js';
-import type { CopilotEvent, CopilotTelemetry } from './telemetry.js';
+import type { CopilotEvent, CopilotTelemetry } from '../../copilot-telemetry.js';
 import { getContextManager } from '../../context-manager/index.js';
+import type { ContextManager } from '../../context-manager/index.js';
 import type { TaskState } from '../../context-manager/types.js';
 import { captureTaskState, injectContextPacket, extractArtifactsFromResponse } from '../../context-manager/integration-helpers.js';
-
-const COPILOT_COMPRESS_DEFAULTS: TransformOptions = {
-  compress: true,
-  compressTools: true,
-  reflow: true,
-  multiCol: 1,
-  minCompressChars: 2000,
-  collapseHistory: true,
-};
-
-function toRequest(request: Request, body: Uint8Array, signal: AbortSignal): Request {
-  const headers = new Headers(request.headers);
-  headers.delete('content-length');
-  const raw = new Uint8Array(body.length);
-  raw.set(body);
-  return new Request(request.url, {
-    method: request.method,
-    headers,
-    body: raw as unknown as BodyInit,
-    signal,
-  });
-}
-
-function extractModel(body: Uint8Array): string | undefined {
-  try {
-    const obj = JSON.parse(new TextDecoder().decode(body));
-    return obj.model ?? undefined;
-  } catch { return undefined; }
-}
+import {
+  COPILOT_COMPRESS_DEFAULTS,
+  toCopilotRequest,
+  extractCopilotModel,
+  compressCopilotRequest,
+} from '../../copilot-compress.js';
 
 export class CopilotCompressHandler extends CopilotRequestHandler {
   private compressOpts: TransformOptions;
@@ -45,11 +22,17 @@ export class CopilotCompressHandler extends CopilotRequestHandler {
   private wireBytesTotal = 0;
   private telemetry?: CopilotTelemetry;
   private turn = 0;
+  private cm: ContextManager | null;
 
-  constructor(opts?: TransformOptions, telemetry?: CopilotTelemetry) {
+  constructor(opts?: TransformOptions, telemetry?: CopilotTelemetry, contextManager?: ContextManager) {
     super();
     this.compressOpts = opts ?? COPILOT_COMPRESS_DEFAULTS;
     this.telemetry = telemetry;
+    this.cm = contextManager ?? null;
+  }
+
+  private getCM(): ContextManager {
+    return this.cm ?? getContextManager();
   }
 
   get compressionStats() {
@@ -71,13 +54,12 @@ export class CopilotCompressHandler extends CopilotRequestHandler {
     if (!isResponses && !isChat) return fetch(request, { signal: ctx.signal });
 
     let bodyBytes = new Uint8Array(await request.arrayBuffer());
-    const model = extractModel(bodyBytes);
-    const start = performance.now();
+    const model = extractCopilotModel(bodyBytes);
 
     const cwd = process.cwd();
     let taskState: TaskState | null = null;
     try {
-      const cm = getContextManager();
+      const cm = this.getCM();
       taskState = captureTaskState(cwd, ctx.sessionId ?? 'unknown');
       const packet = cm.getContext(taskState, { budgetTokens: 2000, includeProvenance: true });
       if (packet.items.length > 0) {
@@ -85,32 +67,9 @@ export class CopilotCompressHandler extends CopilotRequestHandler {
       }
     } catch {}
 
-    let didCompress = false;
-    let outBody = new Uint8Array(bodyBytes);
-    let info: TransformInfo | null = null;
-
-    try {
-      if (isResponses) {
-        const r = await transformOpenAIResponses(bodyBytes, { ...this.compressOpts });
-        info = r.info as TransformInfo | null;
-        if (info?.compressed) didCompress = true;
-        outBody = new Uint8Array(r.body);
-      } else if (isChat) {
-        const r = await transformOpenAIChatCompletions(bodyBytes, { ...this.compressOpts });
-        info = r.info as TransformInfo | null;
-        if (info?.compressed) didCompress = true;
-        outBody = new Uint8Array(r.body);
-      }
-    } catch {}
-
-    if (didCompress) {
-      const text = new TextDecoder().decode(outBody);
-      if (text.includes('"original"')) {
-        outBody = new TextEncoder().encode(text.replace(/"detail":"original"/g, '"detail":"high"'));
-      }
-    }
-
-    const durationMs = Math.round(performance.now() - start);
+    const { outBody, didCompress, info, durationMs } = await compressCopilotRequest(
+      bodyBytes, this.compressOpts, isResponses, isChat,
+    );
 
     if (info) {
       const origTokens = info.origChars > 0 ? Math.round(info.origChars / REPORT_CHARS_PER_TOKEN) : 0;
@@ -143,11 +102,11 @@ export class CopilotCompressHandler extends CopilotRequestHandler {
       }
     }
 
-    const response = await fetch(toRequest(request, outBody, ctx.signal), { signal: ctx.signal });
+    const response = await fetch(toCopilotRequest(request, outBody, ctx.signal), { signal: ctx.signal });
 
     if (taskState) {
       try {
-        const cm = getContextManager();
+        const cm = this.getCM();
         const responseClone = response.clone();
         const responseText = await responseClone.text();
         const responseBody = JSON.parse(responseText);
